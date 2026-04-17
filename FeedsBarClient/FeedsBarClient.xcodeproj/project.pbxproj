@@ -18,7 +18,6 @@
 		786213E62F448C110035D769 /* FaviconStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786213E52F448C110035D769 /* FaviconStore.swift */; };
 		786213E82F448D520035D769 /* SignalClusterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786213E72F448D520035D769 /* SignalClusterView.swift */; };
 		786213EA2F449B4C0035D769 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786213E92F449B4C0035D769 /* DesignSystem.swift */; };
-		786213EC2F44B0690035D769 /* TickerViewOriginal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786213EB2F44B0690035D769 /* TickerViewOriginal.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -53,7 +52,6 @@
 		786213E52F448C110035D769 /* FaviconStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconStore.swift; sourceTree = "<group>"; };
 		786213E72F448D520035D769 /* SignalClusterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignalClusterView.swift; sourceTree = "<group>"; };
 		786213E92F449B4C0035D769 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
-		786213EB2F44B0690035D769 /* TickerViewOriginal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TickerViewOriginal.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -65,6 +63,11 @@
 		786213BD2F4484CF0035D769 /* FeedsBarClientUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = FeedsBarClientUITests;
+			sourceTree = "<group>";
+		};
+		78A9825E2F922B4800E2334B /* Settings */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Settings;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -139,6 +142,7 @@
 		786213CF2F4486270035D769 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				78A9825E2F922B4800E2334B /* Settings */,
 				786213D82F4487600035D769 /* Shared */,
 				786213D72F4487590035D769 /* Ticker */,
 			);
@@ -192,7 +196,6 @@
 				786213DF2F448B0B0035D769 /* TickerComponents.swift */,
 				786213E12F448B2E0035D769 /* TickerView.swift */,
 				786213E72F448D520035D769 /* SignalClusterView.swift */,
-				786213EB2F44B0690035D769 /* TickerViewOriginal.swift */,
 			);
 			path = Ticker;
 			sourceTree = "<group>";
@@ -219,6 +222,9 @@
 			buildRules = (
 			);
 			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				78A9825E2F922B4800E2334B /* Settings */,
 			);
 			name = FeedsBarClient;
 			packageProductDependencies = (
@@ -357,7 +363,6 @@
 				786213EA2F449B4C0035D769 /* DesignSystem.swift in Sources */,
 				786213E42F448B8D0035D769 /* LoadingSplashView.swift in Sources */,
 				786213E02F448B0B0035D769 /* TickerComponents.swift in Sources */,
-				786213EC2F44B0690035D769 /* TickerViewOriginal.swift in Sources */,
 				786213DE2F44881B0035D769 /* FeedStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

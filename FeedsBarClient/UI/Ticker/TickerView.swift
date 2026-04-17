@@ -158,10 +158,12 @@ final class TickerEngine: ObservableObject {
 // MARK: - MAIN VIEW
 struct TickerView: View {
     let store: FeedStore
-    
+
     @AppStorage("scrollSpeed") private var scrollSpeed = 1.0
     @AppStorage("tickerOpacity") private var tickerOpacity = 1.0
     @AppStorage("tickerSize") private var tickerSize = 2
+    @AppStorage("tickerPosition") private var tickerPosition = "top"
+    @AppStorage("alwaysOnTop") private var alwaysOnTop = true
     @State private var isMiniMode = false
 
     var body: some View {
@@ -170,7 +172,7 @@ struct TickerView: View {
             FeedsTheme.background
                 .opacity(isMiniMode ? 0.0 : tickerOpacity)
                 .ignoresSafeArea()
-            
+
             // LAYER 2: Animation Layer (News)
             if !isMiniMode {
                 ZStack(alignment: .leading) {
@@ -180,7 +182,7 @@ struct TickerView: View {
                         scrollSpeed: $scrollSpeed
                     )
                     .clipped()
-                    
+
                     // Left Side Fade
                     LinearGradient(
                         gradient: Gradient(colors: [FeedsTheme.background, FeedsTheme.background.opacity(0)]),
@@ -191,7 +193,7 @@ struct TickerView: View {
                 }
                 .padding(.leading, blockWidth(tickerSize))
             }
-            
+
             // LAYER 3: Fixed Signal Area
             FixedBrandBlock(
                 store: store,
@@ -201,6 +203,37 @@ struct TickerView: View {
             .zIndex(10)
         }
         .frame(height: heightForSize(tickerSize))
+        .contextMenu {
+            Toggle("Mini Mode", isOn: $isMiniMode)
+            Divider()
+            Button {
+                Task { await store.refreshAll() }
+            } label: {
+                Label("Refresh Now", systemImage: "arrow.clockwise")
+            }
+            Divider()
+            Menu {
+                Button("Top") { tickerPosition = "top"; TickerWindowController.shared.applyLayout() }
+                Button("Bottom") { tickerPosition = "bottom"; TickerWindowController.shared.applyLayout() }
+            } label: { Label("Position", systemImage: "arrow.up.and.down.square") }
+            Menu {
+                Button("Compact") { tickerSize = 1; TickerWindowController.shared.applyLayout() }
+                Button("Standard") { tickerSize = 2; TickerWindowController.shared.applyLayout() }
+                Button("Large") { tickerSize = 4; TickerWindowController.shared.applyLayout() }
+            } label: { Label("Size", systemImage: "arrow.up.left.and.arrow.down.right") }
+            Menu {
+                Button("Slow (0.5×)") { scrollSpeed = 0.5 }
+                Button("Normal (1×)") { scrollSpeed = 1.0 }
+                Button("Quick (2×)") { scrollSpeed = 2.0 }
+                Button("Fast (5×)") { scrollSpeed = 5.0 }
+                Button("Turbo (10×)") { scrollSpeed = 10.0 }
+            } label: { Label("Speed", systemImage: "speedometer") }
+            Toggle("Always on Top", isOn: $alwaysOnTop)
+                .onChange(of: alwaysOnTop) { _, _ in TickerWindowController.shared.applyLayout() }
+            Divider()
+            Button("Settings...") { SettingsWindowManager.shared.show(store: store) }
+            Button("Quit FeedsBar") { NSApp.terminate(nil) }
+        }
     }
 
     private func heightForSize(_ size: Int) -> CGFloat { size == 1 ? 48 : (size == 4 ? 108 : 72) }

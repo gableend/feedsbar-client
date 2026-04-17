@@ -37,6 +37,41 @@ struct WindowAccessor: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
+// MARK: - LAYOUT CONTAINERS (for Settings)
+struct ConfigSection<Content: View>: View {
+    let title: String
+    let content: Content
+    init(title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundColor(FeedsTheme.ai)
+            VStack(spacing: 0) { content }.padding(1).background(FeedsTheme.divider).cornerRadius(6)
+        }
+    }
+}
+
+struct ConfigRow<Content: View>: View {
+    let label: String
+    let content: Content
+    init(label: String, @ViewBuilder content: () -> Content) {
+        self.label = label
+        self.content = content()
+    }
+    var body: some View {
+        HStack(spacing: 0) {
+            Text(label).font(.system(size: 13, weight: .medium)).foregroundColor(FeedsTheme.primaryText).frame(width: 200, alignment: .leading)
+            content
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(FeedsTheme.surface)
+    }
+}
+
 // MARK: - TOGGLE STYLES
 struct SignalSwitchStyle: ToggleStyle {
     var onColor: Color = FeedsTheme.ai

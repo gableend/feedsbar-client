@@ -12,12 +12,12 @@ struct FixedBrandBlock: View {
             ZStack(alignment: .leading) {
                 // THE MASK: Solid background color is vital to hide news scrolling behind
                 FeedsTheme.background
-                
+
                 HStack(spacing: 8) {
                     // Settings Icon
-                    Button(action: { /* Open Settings logic */ }) {
+                    Button(action: { SettingsWindowManager.shared.show(store: store) }) {
                         Image(systemName: "gearshape.fill")
-                            .foregroundColor(FeedsTheme.secondaryText.opacity(0.5))
+                            .foregroundColor(FeedsTheme.iconTint)
                             .font(.system(size: settingsIconSize(size)))
                     }
                     .buttonStyle(.plain)
@@ -35,7 +35,7 @@ struct FixedBrandBlock: View {
                     Button(action: { withAnimation { isMiniMode.toggle() } }) {
                         Image(systemName: isMiniMode ? "chevron.right" : "chevron.left")
                             .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(FeedsTheme.secondaryText.opacity(0.9))
+                            .foregroundColor(FeedsTheme.iconTint)
                             .padding(6)
                     }
                     .buttonStyle(.plain)
@@ -82,7 +82,7 @@ struct WeatherSegment: View {
 struct SignalRotationOrb: View {
     let store: FeedStore
     let size: Int
-    
+
     @State private var orbIndex = 0
     @State private var hovered = false
     let timer = Timer.publish(every: 10.0, on: .main, in: .common).autoconnect()
@@ -90,43 +90,63 @@ struct SignalRotationOrb: View {
     var body: some View {
         if !store.orbs.isEmpty {
             let orb = store.orbs[orbIndex % store.orbs.count]
-            
-            HStack(spacing: 8) {
-                // The Orb itself
+            let color = resolveOrbColor(for: orb, topics: store.topics)
+            let words = Array((orb.keywords ?? []).prefix(3))
+
+            HStack(spacing: 10) {
+                // Glow dot — colored by API display_color/resting_color (sentiment cue).
                 ZStack {
-                    Circle().fill(orbColor(orb).opacity(0.25)).frame(width: orbSize * 1.4, height: orbSize * 1.4).blur(radius: 6)
-                    Circle().fill(RadialGradient(gradient: Gradient(colors: [Color.white.opacity(0.6), orbColor(orb)]), center: .topLeading, startRadius: 1, endRadius: orbSize))
-                        .frame(width: orbSize, height: orbSize).shadow(color: orbColor(orb).opacity(0.5), radius: 5)
+                    Circle()
+                        .fill(color.opacity(0.3))
+                        .frame(width: orbSize * 1.6, height: orbSize * 1.6)
+                        .blur(radius: 5)
+                    Circle()
+                        .fill(color)
+                        .frame(width: orbSize, height: orbSize)
+                        .shadow(color: color.opacity(0.6), radius: 4)
                 }
-                
+
                 if size != 1 {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(orb.topicLabel.uppercased()).font(.system(size: 8, weight: .bold)).foregroundColor(FeedsTheme.secondaryText.opacity(0.7))
-                        Text(orb.sentiment?.label?.uppercased() ?? "SCANNING...")
-                            .font(.system(size: summaryFontSize, weight: .black, design: .monospaced))
-                            .foregroundColor(orbColor(orb).opacity(0.9))
-                            .fixedSize()
+                    VStack(alignment: .leading, spacing: -1) {
+                        // Eyebrow: topic label
+                        Text(orb.topicLabel.uppercased())
+                            .font(.system(size: eyebrowFontSize, weight: .black))
+                            .foregroundColor(color)
+                            .padding(.bottom, 2)
+
+                        // Three keywords stacked vertically (white, bold, monospaced).
+                        if words.isEmpty {
+                            Text("SCANNING...")
+                                .font(.system(size: keywordFontSize, weight: .bold, design: .monospaced))
+                                .foregroundColor(FeedsTheme.secondaryText)
+                        } else {
+                            ForEach(Array(words.enumerated()), id: \.offset) { _, word in
+                                Text(word.uppercased())
+                                    .font(.system(size: keywordFontSize, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                            }
+                        }
                     }
-                    .frame(width: 110, alignment: .leading)
-                    .transition(.opacity)
+                    .frame(width: 140, alignment: .leading)
+                    .id(orb.id)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
             }
             .onHover { hovered = $0 }
             .onReceive(timer) { _ in
-                if !hovered { withAnimation { orbIndex += 1 } }
+                if !hovered {
+                    withAnimation(.easeInOut(duration: 0.4)) {
+                        orbIndex = (orbIndex + 1) % max(store.orbs.count, 1)
+                    }
+                }
             }
         }
     }
 
-    private func orbColor(_ orb: Orb) -> Color {
-        let s = orb.sentiment?.score ?? 50
-        if s > 60 { return FeedsTheme.success }
-        if s < 40 { return .red }
-        return FeedsTheme.utility
-    }
-    
     private var orbSize: CGFloat { size == 1 ? 10 : (size == 4 ? 20 : 14) }
-    private var summaryFontSize: CGFloat { size == 4 ? 11 : 9 }
+    private var eyebrowFontSize: CGFloat { size == 4 ? 11 : 9 }
+    private var keywordFontSize: CGFloat { size == 4 ? 11 : 9 }
 }
 
 // MARK: - TICKER ANIMATION LAYER (BRIDGE)
@@ -175,8 +195,16 @@ struct TickerAnimationLayer: View {
             scrollManager.startMonitor()
         }
         .onDisappear { engine.stop(); scrollManager.stopMonitor() }
-        .onChange(of: store.items) { _, newItems in
+        .onChange(of: store.items) { oldItems, newItems in
+            // If the ID set hasn't changed (e.g. server returned items in a
+            // different order), don't reset scroll position — just keep going.
+            let oldIds = Set(oldItems.map(\.id))
+            let newIds = Set(newItems.map(\.id))
+            if oldIds == newIds { return }
             engine.configure(items: newItems, bufferSize: 15, spacing: 60, speed: scrollSpeed)
+        }
+        .onChange(of: scrollSpeed) { _, newSpeed in
+            engine.setSpeed(newSpeed)
         }
     }
 }
@@ -191,6 +219,10 @@ struct TickerRow: View {
         HStack(spacing: 14) {
             TickerIconView(item: item, size: size)
 
+            if let urlStr = item.imageUrl, let url = URL(string: urlStr) {
+                ArticleThumbnail(url: url, width: thumbWidth(size), height: thumbHeight(size))
+            }
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.signalLabelWithDate)
                     .font(.system(size: labelFontSize(size), weight: .black, design: .monospaced))
@@ -201,7 +233,7 @@ struct TickerRow: View {
                     .fixedSize()
 
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(item.title)
+                    Text(item.displayTitle)
                         .font(.system(size: mainFontSize(size), weight: .bold))
                         .foregroundColor(FeedsTheme.primaryText)
                         .fixedSize(horizontal: true, vertical: false)
@@ -218,12 +250,49 @@ struct TickerRow: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(isHovered ? Color.white.opacity(0.08) : Color.clear))
         .onHover { isHovered = $0 }
         .onTapGesture {
-            if let urlStr = item.url, let url = URL(string: urlStr) { NSWorkspace.shared.open(url) }
+            // Only open http/https links. RSS titles are user-curated but the
+            // urls are not — refuse file://, javascript:, etc. before handing
+            // off to NSWorkspace.
+            if let urlStr = item.url,
+               let url = URL(string: urlStr),
+               let scheme = url.scheme?.lowercased(),
+               scheme == "http" || scheme == "https" {
+                NSWorkspace.shared.open(url)
+            }
         }
     }
 
     private func mainFontSize(_ size: Int) -> CGFloat { size == 1 ? 15 : (size == 4 ? 30 : 22) }
     private func labelFontSize(_ size: Int) -> CGFloat { size == 1 ? 9 : (size == 4 ? 13 : 10) }
+    private func thumbWidth(_ s: Int) -> CGFloat { s == 1 ? 40 : (s == 4 ? 80 : 56) }
+    private func thumbHeight(_ s: Int) -> CGFloat { s == 1 ? 26 : (s == 4 ? 50 : 36) }
+}
+
+// MARK: - ARTICLE THUMBNAIL
+struct ArticleThumbnail: View {
+    let url: URL
+    let width: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        AsyncImage(url: url) { phase in
+            switch phase {
+            case .success(let image):
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: width, height: height)
+                    .clipped()
+                    .cornerRadius(6)
+            case .failure, .empty:
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.white.opacity(0.05))
+                    .frame(width: width, height: height)
+            @unknown default:
+                EmptyView()
+            }
+        }
+    }
 }
 
 // MARK: - TICKER ICON

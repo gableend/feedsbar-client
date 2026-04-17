@@ -1,18 +1,33 @@
 import Foundation
+import OSLog
+
+private let log = Logger(subsystem: "bar.feeds.client", category: "feedapi")
 
 actor FeedAPI {
     private let session: URLSession
     private let decoder: JSONDecoder
     
-    // Pointing to your production Netlify functions
-    private let baseURL = URL(string: "https://feedsbar-edge-api.netlify.app/.netlify/functions/")!
+    // Pointing to your production Netlify functions.
+    // Using the failable initialiser + explicit precondition so a typo
+    // during maintenance crashes with a clear message rather than via
+    // an implicit force-unwrap at module init time.
+    private let baseURL: URL = {
+        guard let url = URL(string: "https://feedsbar-edge-api.netlify.app/.netlify/functions/") else {
+            preconditionFailure("FeedAPI baseURL is malformed")
+        }
+        return url
+    }()
     
     // ETag Memory Cache: Path -> ETag String
     private var etagCache: [String: String] = [:]
 
     init() {
             let config = URLSessionConfiguration.default
-            config.requestCachePolicy = .reloadIgnoringLocalCacheData
+            // We do our own ETag-based caching (etagCache + If-None-Match). Don't
+            // let NSURLCache double-cache and keep serving stale payloads from disk
+            // after the CDN has fresh data — bit us on the Topic.orb_color rollout.
+            config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            config.urlCache = nil
             config.timeoutIntervalForRequest = 15
             self.session = URLSession(configuration: config)
             
@@ -48,42 +63,49 @@ actor FeedAPI {
             }
         }
 
-    /// Generic fetch wrapper that handles ETag logic
+    /// Generic fetch wrapper with ETag logic and transient-5xx retry.
     private func fetch<T: Decodable>(_ endpoint: String) async throws -> T {
         guard let url = URL(string: endpoint, relativeTo: baseURL) else {
             throw URLError(.badURL)
         }
-        
-        var request = URLRequest(url: url)
-        
-        // Inject ETag if we have one for this specific endpoint
-        if let cachedTag = etagCache[endpoint] {
-            request.setValue(cachedTag, forHTTPHeaderField: "If-None-Match")
+
+        let maxAttempts = 3
+        var lastStatus = 0
+        for attempt in 1...maxAttempts {
+            var request = URLRequest(url: url)
+            if let cachedTag = etagCache[endpoint] {
+                request.setValue(cachedTag, forHTTPHeaderField: "If-None-Match")
+            }
+
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+
+            // 304 Not Modified — pass-through "no change" signal
+            if http.statusCode == 304 {
+                throw URLError(.cancelled)
+            }
+
+            if (200...299).contains(http.statusCode) {
+                if let newTag = http.value(forHTTPHeaderField: "Etag") {
+                    etagCache[endpoint] = newTag
+                }
+                return try decoder.decode(T.self, from: data)
+            }
+
+            lastStatus = http.statusCode
+            // Retry on 5xx; give up immediately on 4xx
+            if http.statusCode >= 500 && attempt < maxAttempts {
+                let delay = UInt64(300_000_000) * UInt64(attempt) // 0.3s, 0.6s
+                try? await Task.sleep(nanoseconds: delay)
+                continue
+            }
+            break
         }
-        
-        let (data, response) = try await session.data(for: request)
-        
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        
-        // 304 Not Modified: Data hasn't changed.
-        // We throw a specific error so the Store knows to do nothing.
-        if http.statusCode == 304 {
-            throw URLError(.cancelled) // Using .cancelled as "No Change" signal
-        }
-        
-        guard (200...299).contains(http.statusCode) else {
-            print("Server Error: \(http.statusCode) for \(endpoint)")
-            throw URLError(.badServerResponse)
-        }
-        
-        // Capture new ETag
-        if let newTag = http.value(forHTTPHeaderField: "Etag") {
-            etagCache[endpoint] = newTag
-        }
-        
-        return try decoder.decode(T.self, from: data)
+
+        log.error("server error \(lastStatus, privacy: .public) for \(endpoint, privacy: .public) (after retries)")
+        throw URLError(.badServerResponse)
     }
 
     // MARK: - Public Endpoints
@@ -96,12 +118,34 @@ actor FeedAPI {
         return try await fetch("v1_orbs")
     }
     
-    func getBatchItems(feedIDs: [String]) async throws -> ItemsBatchResponse {
-        // Netlify functions might need comma-separated IDs
+    func getBatchItems(feedIDs: [String], limitPerFeed: Int = 5) async throws -> ItemsBatchResponse {
         let ids = feedIDs.joined(separator: ",")
         guard let encodedIds = ids.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
              throw URLError(.badURL)
         }
-        return try await fetch("v1_items_batch?feed_ids=\(encodedIds)")
+        return try await fetch("v1_items_batch?feed_ids=\(encodedIds)&limit_per_feed=\(limitPerFeed)")
+    }
+
+    /// POST user feedback to the edge-api, which stashes it in Buttondown.
+    /// Throws on any non-2xx so the UI can show an error state.
+    func sendFeedback(rating: Int, comment: String, email: String?, appVersion: String?, macos: String?) async throws {
+        guard let url = URL(string: "feedback", relativeTo: baseURL) else {
+            throw URLError(.badURL)
+        }
+        var payload: [String: Any] = ["rating": rating, "comment": comment]
+        if let email, !email.isEmpty { payload["email"] = email }
+        if let appVersion { payload["app_version"] = appVersion }
+        if let macos { payload["macos"] = macos }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
     }
 }
