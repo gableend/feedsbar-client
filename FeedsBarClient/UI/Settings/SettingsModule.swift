@@ -1213,7 +1213,8 @@ private enum CuratedCatalogue {
             blurb: "Finance, markets, corporate strategy.",
             feedTitles: [
                 "Bloomberg Markets", "Financial Times", "MarketWatch",
-                "The Economist", "Forbes Business", "Business Insider", "Guardian Business"
+                "The Economist", "Forbes Business", "Business Insider",
+                "Guardian Business", "The Diff"
             ],
             isDynamic: false
         ),
