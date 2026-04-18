@@ -737,13 +737,19 @@ private struct SourceTypeCard: View {
     let isExpanded: Bool
     let onTap: () -> Void
 
+    private var feedsOfType: [FeedIndexItem] {
+        store.feeds.filter { $0.effectiveSourceType == type }
+    }
+    private var enabledCount: Int {
+        feedsOfType.filter { store.isFeedEnabled($0.id) }.count
+    }
     private var hasFeeds: Bool { count > 0 }
     /// RSS drills to its own tab; other types with feeds expand inline;
     /// types with zero feeds are inert placeholders.
     private var isInteractive: Bool { type == .rss || hasFeeds }
 
     private var statusText: String {
-        if hasFeeds { return "\(count) source\(count == 1 ? "" : "s")" }
+        if hasFeeds { return "\(enabledCount)/\(count) enabled" }
         return "Coming soon"
     }
 
@@ -755,43 +761,62 @@ private struct SourceTypeCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Button(action: onTap) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(type.tint.opacity(isInteractive ? 0.18 : 0.10))
-                            .frame(width: 40, height: 40)
-                        Image(systemName: type.sfSymbol)
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(type.tint.opacity(isInteractive ? 1.0 : 0.55))
-                    }
+            HStack(spacing: 14) {
+                // Tap target: icon + title + status. Triggers drill-in or expand.
+                Button(action: onTap) {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(type.tint.opacity(isInteractive ? 0.18 : 0.10))
+                                .frame(width: 40, height: 40)
+                            Image(systemName: type.sfSymbol)
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(type.tint.opacity(isInteractive ? 1.0 : 0.55))
+                        }
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(type.displayName.uppercased())
-                            .font(.system(size: 12, weight: .black, design: .monospaced))
-                            .foregroundColor(FeedsTheme.primaryText)
-                        Text(statusText)
-                            .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(FeedsTheme.secondaryText)
-                    }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(type.displayName.uppercased())
+                                .font(.system(size: 12, weight: .black, design: .monospaced))
+                                .foregroundColor(FeedsTheme.primaryText)
+                            Text(statusText)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(FeedsTheme.secondaryText)
+                        }
 
-                    Spacer()
+                        Spacer()
 
-                    if !chevron.isEmpty {
-                        Image(systemName: chevron)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(FeedsTheme.iconTint)
+                        if !chevron.isEmpty {
+                            Image(systemName: chevron)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(FeedsTheme.iconTint)
+                        }
                     }
+                    .contentShape(Rectangle())
                 }
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.white.opacity(isInteractive ? 0.06 : 0.03))
-                )
-                .opacity(isInteractive ? 1.0 : 0.80)
+                .buttonStyle(.plain)
+                .disabled(!isInteractive)
+
+                // Master toggle for this type: enables/disables every feed of
+                // this source_type in one batched store call. Hidden for types
+                // with no feeds (nothing to toggle).
+                if hasFeeds {
+                    Toggle("", isOn: Binding(
+                        get: { enabledCount == count },
+                        set: { newOn in
+                            let ids = feedsOfType.map { $0.id }
+                            store.setFeedsEnabled(ids, enabled: newOn)
+                        }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(SignalSwitchStyle(onColor: FeedsTheme.ai))
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(!isInteractive)
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.white.opacity(isInteractive ? 0.06 : 0.03))
+            )
+            .opacity(isInteractive ? 1.0 : 0.80)
 
             if isExpanded && hasFeeds && type != .rss {
                 SourceTypeFeedList(store: store, type: type)
