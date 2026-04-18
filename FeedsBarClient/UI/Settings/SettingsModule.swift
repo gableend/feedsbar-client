@@ -1226,7 +1226,9 @@ private enum CuratedCatalogue {
             feedTitles: [
                 "The Verge", "TechCrunch", "Wired", "Ars Technica",
                 "Hugging Face Blog", "OpenAI News", "MIT Technology Review",
-                "Google Research", "Bloomberg Technology", "Two Minute Papers"
+                "Google Research", "Bloomberg Technology", "Two Minute Papers",
+                "r/technology", "r/MachineLearning",
+                "OpenAI Python SDK", "Claude Code Releases"
             ],
             isDynamic: false
         ),
@@ -1237,9 +1239,14 @@ private enum CuratedCatalogue {
             tint: Color(red: 0.70, green: 0.56, blue: 0.95),
             blurb: "Dev tools, platforms, engineering posts.",
             feedTitles: [
-                "Hacker News", "GitHub Blog", "GitHub Changelog", "Cloudflare Blog",
-                "Stripe Blog", "AWS News Blog", "Schneier on Security", "The Register",
-                "Y Combinator", "Lenny's Newsletter", "Next.js Releases", "Node.js Releases"
+                "Hacker News", "Hacker News Best", "Ask Hacker News",
+                "GitHub Blog", "GitHub Changelog", "GitHub Trending",
+                "Cloudflare Blog", "Stripe Blog", "AWS News Blog",
+                "Schneier on Security", "The Register",
+                "Y Combinator", "Lenny's Newsletter",
+                "Next.js Releases", "Node.js Releases", "Kubernetes Releases",
+                "Microsoft on GitHub",
+                "r/programming", "r/startups"
             ],
             isDynamic: false
         ),
@@ -1251,7 +1258,7 @@ private enum CuratedCatalogue {
             blurb: "Research, discoveries, the natural world.",
             feedTitles: [
                 "Nature News", "New Scientist", "Popular Science", "Science Daily",
-                "Science Magazine", "IEEE Spectrum", "ZME Science"
+                "Science Magazine", "IEEE Spectrum", "ZME Science", "r/science"
             ],
             isDynamic: false
         ),
