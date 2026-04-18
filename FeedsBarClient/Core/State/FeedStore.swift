@@ -64,7 +64,7 @@ final class FeedStore {
 
     func toggleFeed(_ id: String) {
         if disabledIDs.contains(id) { disabledIDs.remove(id) } else { disabledIDs.insert(id) }
-        activeCuratedID = nil
+        setActiveCuratedID(nil)
         writeDisabledIDs()
         scheduleDebouncedRefresh()
     }
@@ -78,7 +78,7 @@ final class FeedStore {
         } else {
             for id in ids { disabledIDs.insert(id) }
         }
-        activeCuratedID = nil
+        setActiveCuratedID(nil)
         writeDisabledIDs()
         scheduleDebouncedRefresh()
     }
@@ -96,15 +96,29 @@ final class FeedStore {
         var next = Set<String>()
         for f in feeds where !keep.contains(f.id) { next.insert(f.id) }
         disabledIDs = next
-        activeCuratedID = curatedID
+        setActiveCuratedID(curatedID)
         writeDisabledIDs()
         scheduleDebouncedRefresh()
     }
 
-    /// Which curated bundle (if any) the user most recently activated. Nil
-    /// after any manual toggle so the recency filter only applies when the
-    /// enabled set is still curated.
-    private(set) var activeCuratedID: String?
+    /// Which curated bundle (if any) the user most recently activated.
+    /// Persisted to UserDefaults alongside `disabledIDs` so dynamic bundles
+    /// (Pulse) keep their recency-filter behaviour across sessions, not just
+    /// the enabled feed set. Cleared on any manual toggle.
+    private static let activeCuratedIDKey = "activeCuratedID"
+    private(set) var activeCuratedID: String? = {
+        let raw = UserDefaults.standard.string(forKey: activeCuratedIDKey) ?? ""
+        return raw.isEmpty ? nil : raw
+    }()
+
+    private func setActiveCuratedID(_ id: String?) {
+        activeCuratedID = id
+        if let id, !id.isEmpty {
+            UserDefaults.standard.set(id, forKey: FeedStore.activeCuratedIDKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: FeedStore.activeCuratedIDKey)
+        }
+    }
 
     /// Debounce refreshes triggered by user toggling feeds. A burst of
     /// toggles (e.g. Enable All, or per-category switch) collapses into a
