@@ -45,6 +45,7 @@ struct FeedIndexItem: Codable, Identifiable {
     let url: String?
     let iconUrl: String?
     let isActive: Bool?
+    let sourceType: SourceType?
     let items30d: Int?
     let items1h: Int?
     let lastItemAt: Date?
@@ -57,12 +58,17 @@ struct FeedIndexItem: Codable, Identifiable {
         case url
         case iconUrl = "icon_url"
         case isActive = "is_active"
+        case sourceType = "source_type"
         case items30d = "items_30d"
         case items1h = "items_1h"
         case lastItemAt = "last_item_at"
         case status
         case category
     }
+
+    /// Effective source type — defaults to `.rss` when the server omits the
+    /// field (older payloads, cached snapshots from before the migration).
+    var effectiveSourceType: SourceType { sourceType ?? .rss }
 
     /// Health classification used by the Sources tab dot.
     enum Health {
@@ -119,12 +125,22 @@ struct FeedSource: Codable, Equatable {
     let id: String
     let title: String?
     let slug: String?
+    let iconUrl: String?
+    let domain: String?
+    let sourceType: SourceType?
+    let category: FeedCategory?
 
     enum CodingKeys: String, CodingKey {
         case id = "feed_id"
         case title
         case slug
+        case iconUrl = "icon_url"
+        case domain
+        case sourceType = "source_type"
+        case category
     }
+
+    var effectiveSourceType: SourceType { sourceType ?? .rss }
 }
 
 // MARK: - THE CORE ITEM

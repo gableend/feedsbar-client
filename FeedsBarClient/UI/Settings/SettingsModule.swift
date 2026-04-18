@@ -144,6 +144,7 @@ struct SettingsView: View {
         case preferences = "Preferences"
         case curated = "Curated"
         case sources = "Sources"
+        case rss = "RSS"
         case about = "About"
     }
 
@@ -179,7 +180,8 @@ struct SettingsView: View {
                 case .home: HomeTab(store: store)
                 case .preferences: PreferencesTab()
                 case .curated: CuratedTab(store: store)
-                case .sources: SourcesTab(store: store)
+                case .sources: SourcesOverviewTab(store: store, onPickRSS: { selectedTab = .rss })
+                case .rss: RSSTab(store: store)
                 case .about: AboutTab(store: store)
                 }
             }
@@ -193,7 +195,8 @@ struct SettingsView: View {
         case .home: return "house"
         case .preferences: return "slider.horizontal.3"
         case .curated: return "sparkles"
-        case .sources: return "line.3.horizontal.decrease.circle"
+        case .sources: return "square.stack.3d.up"
+        case .rss: return "dot.radiowaves.left.and.right"
         case .about: return "info.circle"
         }
     }
@@ -669,8 +672,113 @@ struct PreferencesTab: View {
     }
 }
 
-// MARK: - SOURCES TAB
-struct SourcesTab: View {
+// MARK: - SOURCES OVERVIEW TAB
+/// Umbrella view that lists every supported source type as a card.
+/// Day 1: RSS is the only type with live feeds. Other types render as
+/// "Coming soon" placeholders until the worker seeds rows for them.
+/// Tapping the RSS card jumps to the dedicated RSS tab so the full feed
+/// list lives in one place.
+struct SourcesOverviewTab: View {
+    let store: FeedStore
+    let onPickRSS: () -> Void
+
+    private var countsByType: [SourceType: Int] {
+        var out: [SourceType: Int] = [:]
+        for f in store.feeds {
+            out[f.effectiveSourceType, default: 0] += 1
+        }
+        return out
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                header
+                ForEach(SourceType.allCases, id: \.self) { type in
+                    SourceTypeCard(
+                        type: type,
+                        count: countsByType[type] ?? 0,
+                        onTap: { if type == .rss { onPickRSS() } }
+                    )
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 18)
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("SOURCES")
+                .font(.system(size: 11, weight: .black, design: .monospaced))
+                .foregroundColor(FeedsTheme.secondaryText)
+            Text("The signal layer pulls from multiple source types. RSS is live today; others light up as they're added.")
+                .font(.system(size: 12))
+                .foregroundColor(FeedsTheme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.bottom, 4)
+    }
+}
+
+private struct SourceTypeCard: View {
+    let type: SourceType
+    let count: Int
+    let onTap: () -> Void
+
+    private var isInteractive: Bool { type == .rss }
+    private var statusText: String {
+        if count > 0 { return "\(count) source\(count == 1 ? "" : "s")" }
+        if type.isIngestionReady { return "None yet" }
+        return "Coming soon"
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(type.tint.opacity(isInteractive ? 0.18 : 0.10))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: type.sfSymbol)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(type.tint.opacity(isInteractive ? 1.0 : 0.55))
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(type.displayName.uppercased())
+                        .font(.system(size: 12, weight: .black, design: .monospaced))
+                        .foregroundColor(FeedsTheme.primaryText)
+                    Text(statusText)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(FeedsTheme.secondaryText)
+                }
+
+                Spacer()
+
+                if isInteractive {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(FeedsTheme.iconTint)
+                }
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.white.opacity(isInteractive ? 0.06 : 0.03))
+            )
+            .opacity(isInteractive ? 1.0 : 0.80)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isInteractive)
+    }
+}
+
+// MARK: - RSS TAB
+/// Per-feed RSS management. This is the pre-existing "Sources" surface,
+/// renamed to "RSS" now that `SourcesOverviewTab` is the umbrella view for
+/// all source types.
+struct RSSTab: View {
     let store: FeedStore
     @State private var expanded: Set<String> = []
     // Cache the expensive grouping so the body doesn't re-sort 140 feeds
@@ -788,7 +896,7 @@ struct SourcesTab: View {
 }
 
 private struct CategoryDisclosure: View {
-    let group: SourcesTab.CategoryGroup
+    let group: RSSTab.CategoryGroup
     let store: FeedStore
     let isExpanded: Bool
     let toggleExpanded: () -> Void
@@ -973,12 +1081,17 @@ struct CuratedBundle: Identifiable, Hashable {
             .map { $0.id }
     }
 
-    /// True if the user's currently-enabled set exactly matches this bundle.
+    /// True when every feed this bundle resolves to is currently enabled.
+    /// Uses a subset check (not exact equality) so seeding new feeds that
+    /// a bundle references later doesn't silently flip bundles inactive for
+    /// existing users. The trade-off: a bundle also reads as "active" when
+    /// the user has enabled extras on top — acceptable given the Curated
+    /// UI is a one-tap activator, not a canonical view of the user's set.
     func isActive(in store: FeedStore) -> Bool {
         let resolved = Set(resolveFeedIds(in: store.feeds))
         if resolved.isEmpty { return false }
         let enabled = Set(store.feeds.map(\.id)).subtracting(store.disabledIDs)
-        return enabled == resolved
+        return resolved.isSubset(of: enabled)
     }
 }
 

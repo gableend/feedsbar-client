@@ -18,6 +18,7 @@
 		786213E62F448C110035D769 /* FaviconStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786213E52F448C110035D769 /* FaviconStore.swift */; };
 		786213E82F448D520035D769 /* SignalClusterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786213E72F448D520035D769 /* SignalClusterView.swift */; };
 		786213EA2F449B4C0035D769 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786213E92F449B4C0035D769 /* DesignSystem.swift */; };
+		786214012F44878A0035D769 /* SourceType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786214002F44878A0035D769 /* SourceType.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -52,6 +53,7 @@
 		786213E52F448C110035D769 /* FaviconStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconStore.swift; sourceTree = "<group>"; };
 		786213E72F448D520035D769 /* SignalClusterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignalClusterView.swift; sourceTree = "<group>"; };
 		786213E92F449B4C0035D769 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		786214002F44878A0035D769 /* SourceType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceType.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -170,6 +172,7 @@
 			children = (
 				786213D92F44878A0035D769 /* DomainObjects.swift */,
 				786213E92F449B4C0035D769 /* DesignSystem.swift */,
+				786214002F44878A0035D769 /* SourceType.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -358,6 +361,7 @@
 				786213E82F448D520035D769 /* SignalClusterView.swift in Sources */,
 				786213DC2F4487AD0035D769 /* FeedAPI.swift in Sources */,
 				786213DA2F44878A0035D769 /* DomainObjects.swift in Sources */,
+				786214012F44878A0035D769 /* SourceType.swift in Sources */,
 				786213E22F448B2E0035D769 /* TickerView.swift in Sources */,
 				786213D32F4486D50035D769 /* FeedsBarClientApp.swift in Sources */,
 				786213EA2F449B4C0035D769 /* DesignSystem.swift in Sources */,
