@@ -64,6 +64,7 @@ final class FeedStore {
 
     func toggleFeed(_ id: String) {
         if disabledIDs.contains(id) { disabledIDs.remove(id) } else { disabledIDs.insert(id) }
+        activeCuratedID = nil
         writeDisabledIDs()
         scheduleDebouncedRefresh()
     }
@@ -77,9 +78,33 @@ final class FeedStore {
         } else {
             for id in ids { disabledIDs.insert(id) }
         }
+        activeCuratedID = nil
         writeDisabledIDs()
         scheduleDebouncedRefresh()
     }
+
+    /// Replace the enabled set with exactly the given feed IDs. Everything
+    /// else is disabled. Single disk write + single debounced refresh.
+    /// Used by the Curated tab when activating a bundle.
+    ///
+    /// `curatedID` lets dynamic bundles (e.g. "pulse") tell refreshItemsOnly
+    /// to pass a recency window to the server so the ticker only shows
+    /// fresh items, not whatever happens to be latest-per-feed.
+    func applyCuratedSet(_ ids: [String], curatedID: String? = nil) {
+        guard !feeds.isEmpty else { return }
+        let keep = Set(ids)
+        var next = Set<String>()
+        for f in feeds where !keep.contains(f.id) { next.insert(f.id) }
+        disabledIDs = next
+        activeCuratedID = curatedID
+        writeDisabledIDs()
+        scheduleDebouncedRefresh()
+    }
+
+    /// Which curated bundle (if any) the user most recently activated. Nil
+    /// after any manual toggle so the recency filter only applies when the
+    /// enabled set is still curated.
+    private(set) var activeCuratedID: String?
 
     /// Debounce refreshes triggered by user toggling feeds. A burst of
     /// toggles (e.g. Enable All, or per-category switch) collapses into a
@@ -90,7 +115,10 @@ final class FeedStore {
         pendingRefreshTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 300_000_000)
             if Task.isCancelled { return }
-            await self?.refreshAll()
+            // Toggling feeds only affects the items batch — skip the manifest
+            // and orbs round-trips so the ticker snaps back in ~1 network hop
+            // instead of waiting on three serialised fetches.
+            await self?.refreshItemsOnly()
         }
     }
     
@@ -203,7 +231,13 @@ final class FeedStore {
                 self.phase = .running
                 self.statusMessage = "No active feeds found"
             } else {
-                let batch = try await api.getBatchItems(feedIDs: Array(activeFeedIDs))
+                let sinceMinutes: Int? = activeCuratedID == "pulse" ? 120 : nil
+                let batch = try await api.getBatchItems(
+                    feedIDs: Array(activeFeedIDs),
+                    sinceMinutes: sinceMinutes
+                )
+                // Keep server order (newest-first) at the store layer; the
+                // ticker applies the user's feedMix preference on render.
                 self.items = batch.items
                 self.lastUpdated = Date()
                 self.phase = .running
@@ -237,6 +271,46 @@ final class FeedStore {
         persistSnapshot()
     }
     
+    /// Fast path for user-triggered toggles: only refetches the items batch
+    /// using the current cached manifest. Avoids the manifest + orbs fetches
+    /// that `refreshAll()` does on heartbeat.
+    func refreshItemsOnly() async {
+        let disabled = self.disabledIDs
+        let activeFeedIDs = self.feeds
+            .filter { ($0.isActive ?? true) && !disabled.contains($0.id) }
+            .prefix(20)
+            .map { $0.id }
+
+        // Dynamic curated sets (Pulse) want a tight recency window so the
+        // ticker doesn't surface yesterday's items from feeds that happened
+        // to make the cut based on a single fresh post.
+        let sinceMinutes: Int? = activeCuratedID == "pulse" ? 120 : nil
+
+        do {
+            if activeFeedIDs.isEmpty {
+                self.items = []
+                self.phase = .running
+                self.statusMessage = "No active feeds found"
+            } else {
+                let batch = try await api.getBatchItems(
+                    feedIDs: Array(activeFeedIDs),
+                    sinceMinutes: sinceMinutes
+                )
+                self.items = batch.items
+                self.lastUpdated = Date()
+                self.phase = .running
+                self.statusMessage = "Live"
+            }
+        } catch let e as URLError where e.code == .cancelled {
+            self.phase = .running
+            self.statusMessage = "Live"
+        } catch {
+            log.error("items-only fetch failed: \(String(describing: error), privacy: .public)")
+        }
+
+        persistSnapshot()
+    }
+
     // MARK: - Private Signal Fetchers
     
     private func fetchWeather() async throws -> WeatherInfo {

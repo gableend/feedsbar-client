@@ -118,12 +118,20 @@ actor FeedAPI {
         return try await fetch("v1_orbs")
     }
     
-    func getBatchItems(feedIDs: [String], limitPerFeed: Int = 5) async throws -> ItemsBatchResponse {
+    func getBatchItems(
+        feedIDs: [String],
+        limitPerFeed: Int = 5,
+        sinceMinutes: Int? = nil
+    ) async throws -> ItemsBatchResponse {
         let ids = feedIDs.joined(separator: ",")
         guard let encodedIds = ids.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
              throw URLError(.badURL)
         }
-        return try await fetch("v1_items_batch?feed_ids=\(encodedIds)&limit_per_feed=\(limitPerFeed)")
+        var path = "v1_items_batch?feed_ids=\(encodedIds)&limit_per_feed=\(limitPerFeed)"
+        if let sinceMinutes, sinceMinutes > 0 {
+            path += "&since_minutes=\(sinceMinutes)"
+        }
+        return try await fetch(path)
     }
 
     /// POST user feedback to the edge-api, which stashes it in Buttondown.

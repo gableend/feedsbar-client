@@ -154,11 +154,19 @@ struct TickerAnimationLayer: View {
     let store: FeedStore
     let tickerSize: Int
     @Binding var scrollSpeed: Double
-    
+    @AppStorage("feedMix") private var feedMix: String = "shuffle"  // "shuffle" | "latest"
+
     @StateObject private var engine = TickerEngine()
     @StateObject private var scrollManager = ScrollManager()
     @State private var isDragging = false
     @State private var lastDragTranslation: CGFloat = 0
+
+    /// Items arranged per the user's feedMix preference.
+    /// - shuffle: Fisher-Yates random interleave across feeds
+    /// - latest: server order (newest-first per feed)
+    private func ordered(_ items: [FeedItem]) -> [FeedItem] {
+        feedMix == "latest" ? items : items.shuffled()
+    }
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -189,19 +197,22 @@ struct TickerAnimationLayer: View {
             )
         }
         .onAppear {
-            engine.configure(items: store.items, bufferSize: 15, spacing: 60, speed: scrollSpeed)
+            engine.configure(items: ordered(store.items), bufferSize: 15, spacing: 60, speed: scrollSpeed)
             engine.start()
             scrollManager.onScroll = { engine.manualScroll(delta: $0) }
             scrollManager.startMonitor()
         }
         .onDisappear { engine.stop(); scrollManager.stopMonitor() }
         .onChange(of: store.items) { oldItems, newItems in
-            // If the ID set hasn't changed (e.g. server returned items in a
-            // different order), don't reset scroll position — just keep going.
+            // If the ID set hasn't changed, don't reset scroll position.
             let oldIds = Set(oldItems.map(\.id))
             let newIds = Set(newItems.map(\.id))
             if oldIds == newIds { return }
-            engine.configure(items: newItems, bufferSize: 15, spacing: 60, speed: scrollSpeed)
+            engine.configure(items: ordered(newItems), bufferSize: 15, spacing: 60, speed: scrollSpeed)
+        }
+        .onChange(of: feedMix) { _, _ in
+            // User toggled order mode — reshuffle immediately.
+            engine.configure(items: ordered(store.items), bufferSize: 15, spacing: 60, speed: scrollSpeed)
         }
         .onChange(of: scrollSpeed) { _, newSpeed in
             engine.setSpeed(newSpeed)

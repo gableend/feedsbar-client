@@ -142,6 +142,7 @@ struct SettingsView: View {
     enum SettingsTab: String, CaseIterable {
         case home = "Home"
         case preferences = "Preferences"
+        case curated = "Curated"
         case sources = "Sources"
         case about = "About"
     }
@@ -177,6 +178,7 @@ struct SettingsView: View {
                 switch selectedTab {
                 case .home: HomeTab(store: store)
                 case .preferences: PreferencesTab()
+                case .curated: CuratedTab(store: store)
                 case .sources: SourcesTab(store: store)
                 case .about: AboutTab(store: store)
                 }
@@ -190,6 +192,7 @@ struct SettingsView: View {
         switch tab {
         case .home: return "house"
         case .preferences: return "slider.horizontal.3"
+        case .curated: return "sparkles"
         case .sources: return "line.3.horizontal.decrease.circle"
         case .about: return "info.circle"
         }
@@ -534,6 +537,7 @@ struct PreferencesTab: View {
     @AppStorage("tickerPosition") private var tickerPosition = "top"
     @AppStorage("preferredMonitor") private var preferredMonitor = ""
     @AppStorage("showSettingsAtStartup") private var showSettingsAtStartup = true
+    @AppStorage("feedMix") private var feedMix: String = "shuffle"
 
     @State private var localScrollSpeed: Double = 1.0
     @State private var localOpacity: Double = 1.0
@@ -629,6 +633,17 @@ struct PreferencesTab: View {
                         }
                         .frame(width: 240)
                         .onAppear { localOpacity = tickerOpacity }
+                    }
+                }
+
+                // FEED MIX
+                ConfigSection(title: "FEED MIX") {
+                    ConfigRow(label: "Ordering") {
+                        Picker("", selection: $feedMix) {
+                            Text("Shuffle").tag("shuffle")
+                            Text("Latest").tag("latest")
+                        }
+                        .labelsHidden().pickerStyle(.segmented).frame(width: 200)
                     }
                 }
 
@@ -925,6 +940,238 @@ private struct FeedRowIcon: View {
             size: size
         )
         .opacity(isEnabled ? 1.0 : 0.45)
+    }
+}
+
+// MARK: - CURATED TAB
+
+/// A hand-picked set of feeds. Activating one enables exactly those feeds
+/// and disables everything else (mutex-style). "Pulse" is dynamic: the
+/// feeds it resolves to depend on which sources have items in the last hour.
+struct CuratedBundle: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let icon: String      // SF Symbol
+    let tint: Color
+    let blurb: String
+    let feedTitles: [String]
+    let isDynamic: Bool
+
+    /// Resolve to concrete feed IDs against the live manifest. For dynamic
+    /// bundles this can return an empty list if nothing qualifies right now.
+    func resolveFeedIds(in feeds: [FeedIndexItem]) -> [String] {
+        if isDynamic && id == "pulse" {
+            return feeds
+                .filter { ($0.items1h ?? 0) > 0 }
+                .sorted { ($0.items1h ?? 0) > ($1.items1h ?? 0) }
+                .prefix(10)
+                .map { $0.id }
+        }
+        let wanted = Set(feedTitles.map { $0.lowercased() })
+        return feeds
+            .filter { wanted.contains($0.title.lowercased()) }
+            .map { $0.id }
+    }
+
+    /// True if the user's currently-enabled set exactly matches this bundle.
+    func isActive(in store: FeedStore) -> Bool {
+        let resolved = Set(resolveFeedIds(in: store.feeds))
+        if resolved.isEmpty { return false }
+        let enabled = Set(store.feeds.map(\.id)).subtracting(store.disabledIDs)
+        return enabled == resolved
+    }
+}
+
+private enum CuratedCatalogue {
+    static let all: [CuratedBundle] = [
+        CuratedBundle(
+            id: "pulse",
+            name: "Pulse",
+            icon: "bolt.fill",
+            tint: FeedsTheme.utility,
+            blurb: "Whatever's moving right now — feeds publishing in the last hour.",
+            feedTitles: [],
+            isDynamic: true
+        ),
+        CuratedBundle(
+            id: "world",
+            name: "World Briefing",
+            icon: "globe",
+            tint: FeedsTheme.newsHighContrast,
+            blurb: "Major international news desks.",
+            feedTitles: [
+                "BBC News", "NPR Top Stories", "Al Jazeera", "Deutsche Welle",
+                "The Guardian World", "Sky News", "CBS News", "Radio Free Europe"
+            ],
+            isDynamic: false
+        ),
+        CuratedBundle(
+            id: "business",
+            name: "Business & Markets",
+            icon: "chart.line.uptrend.xyaxis",
+            tint: Color(red: 0.31, green: 0.82, blue: 0.77),
+            blurb: "Finance, markets, corporate strategy.",
+            feedTitles: [
+                "Bloomberg Markets", "Financial Times", "MarketWatch",
+                "The Economist", "Forbes Business", "Business Insider", "Guardian Business"
+            ],
+            isDynamic: false
+        ),
+        CuratedBundle(
+            id: "tech-ai",
+            name: "Tech & AI",
+            icon: "cpu",
+            tint: FeedsTheme.ai,
+            blurb: "Mainstream tech press plus AI-lab voices.",
+            feedTitles: [
+                "The Verge", "TechCrunch", "Wired", "Ars Technica",
+                "Hugging Face Blog", "OpenAI News", "MIT Technology Review", "Google Research"
+            ],
+            isDynamic: false
+        ),
+        CuratedBundle(
+            id: "makers",
+            name: "Makers",
+            icon: "hammer.fill",
+            tint: Color(red: 0.70, green: 0.56, blue: 0.95),
+            blurb: "Dev tools, platforms, engineering posts.",
+            feedTitles: [
+                "Hacker News", "GitHub Blog", "GitHub Changelog", "Cloudflare Blog",
+                "Stripe Blog", "AWS News Blog", "Schneier on Security", "The Register"
+            ],
+            isDynamic: false
+        ),
+        CuratedBundle(
+            id: "science",
+            name: "Science",
+            icon: "atom",
+            tint: Color(red: 0.416, green: 0.580, blue: 0.788),
+            blurb: "Research, discoveries, the natural world.",
+            feedTitles: [
+                "Nature News", "New Scientist", "Popular Science", "Science Daily",
+                "Science Magazine", "IEEE Spectrum", "ZME Science"
+            ],
+            isDynamic: false
+        ),
+        CuratedBundle(
+            id: "culture",
+            name: "Culture",
+            icon: "theatermasks.fill",
+            tint: Color(red: 0.96, green: 0.45, blue: 0.72),
+            blurb: "Film, music, style, ideas.",
+            feedTitles: [
+                "Rolling Stone", "Billboard", "Variety", "Deadline",
+                "Elle", "Vogue", "PetaPixel", "Stratechery"
+            ],
+            isDynamic: false
+        )
+    ]
+}
+
+struct CuratedTab: View {
+    let store: FeedStore
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("CURATED SETS")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(FeedsTheme.ai)
+                Text("Pick one to replace your current feed selection. Tweak per-feed in Sources afterwards.")
+                    .font(.system(size: 11))
+                    .foregroundColor(FeedsTheme.secondaryText)
+                    .padding(.bottom, 4)
+
+                ForEach(CuratedCatalogue.all) { bundle in
+                    CuratedBundleCard(bundle: bundle, store: store)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+        }
+    }
+}
+
+private struct CuratedBundleCard: View {
+    let bundle: CuratedBundle
+    let store: FeedStore
+
+    private var resolvedIds: [String] { bundle.resolveFeedIds(in: store.feeds) }
+    private var resolvedCount: Int { resolvedIds.count }
+    private var isActive: Bool { bundle.isActive(in: store) }
+    private var preview: [FeedIndexItem] {
+        let set = Set(resolvedIds)
+        return store.feeds.filter { set.contains($0.id) }.prefix(6).map { $0 }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            // Glyph
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(bundle.tint.opacity(0.18))
+                    .frame(width: 40, height: 40)
+                Image(systemName: bundle.icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(bundle.tint)
+            }
+
+            // Body
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(bundle.name.uppercased())
+                        .font(.system(size: 12, weight: .black, design: .monospaced))
+                        .foregroundColor(FeedsTheme.primaryText)
+                    Text("\(resolvedCount) \(bundle.isDynamic ? "live" : "feeds")")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(FeedsTheme.secondaryText)
+                    Spacer()
+                }
+                Text(bundle.blurb)
+                    .font(.system(size: 11))
+                    .foregroundColor(FeedsTheme.secondaryText)
+                    .lineLimit(2)
+                HStack(spacing: 4) {
+                    ForEach(preview) { feed in
+                        FeedRowIcon(iconUrl: feed.iconUrl, isEnabled: true)
+                            .scaleEffect(0.72, anchor: .leading)
+                            .frame(width: 22, height: 22)
+                    }
+                    if resolvedCount > preview.count {
+                        Text("+\(resolvedCount - preview.count)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(FeedsTheme.secondaryText)
+                            .padding(.leading, 4)
+                    }
+                }
+                .frame(height: 24)
+            }
+
+            // Action
+            Button(action: { store.applyCuratedSet(resolvedIds, curatedID: bundle.id) }) {
+                Text(isActive ? "ACTIVE" : "ACTIVATE")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(isActive ? FeedsTheme.success : .white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(isActive ? Color.white.opacity(0.08) : FeedsTheme.ai)
+                    .cornerRadius(4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(isActive ? FeedsTheme.success.opacity(0.6) : Color.clear, lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(resolvedCount == 0 || isActive)
+            .opacity(resolvedCount == 0 ? 0.4 : 1.0)
+        }
+        .padding(14)
+        .background(FeedsTheme.surface)
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isActive ? FeedsTheme.success.opacity(0.5) : FeedsTheme.divider.opacity(0.6), lineWidth: 1)
+        )
     }
 }
 

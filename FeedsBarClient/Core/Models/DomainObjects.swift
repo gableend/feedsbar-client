@@ -46,6 +46,7 @@ struct FeedIndexItem: Codable, Identifiable {
     let iconUrl: String?
     let isActive: Bool?
     let items30d: Int?
+    let items1h: Int?
     let lastItemAt: Date?
     let status: String?
     let category: FeedCategory?
@@ -57,6 +58,7 @@ struct FeedIndexItem: Codable, Identifiable {
         case iconUrl = "icon_url"
         case isActive = "is_active"
         case items30d = "items_30d"
+        case items1h = "items_1h"
         case lastItemAt = "last_item_at"
         case status
         case category
@@ -227,14 +229,24 @@ extension FeedItem {
     }
     
     var signalLabelWithDate: String {
-        // Fix: Use the computed sourceDomain string which is non-optional
         let base = source?.title ?? sourceDomain.components(separatedBy: ".").first ?? "SIGNAL"
         let label = base.isEmpty ? "SIGNAL" : base
-        
+
         guard let date = publishedAt else { return label.uppercased() }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        return "\(label.uppercased()) • \(formatter.string(from: date))"
+
+        let cal = Calendar.current
+        let timeFmt = DateFormatter()
+        timeFmt.dateFormat = "h:mm a"
+        let stamp: String
+        if cal.isDateInToday(date) {
+            stamp = timeFmt.string(from: date)
+        } else {
+            let dateFmt = DateFormatter()
+            // "Apr 17" in most locales; drops year for recent items.
+            dateFmt.setLocalizedDateFormatFromTemplate("MMM d")
+            stamp = "\(dateFmt.string(from: date)) \(timeFmt.string(from: date))"
+        }
+        return "\(label.uppercased()) • \(stamp)"
     }
     
     var accentColor: Color {

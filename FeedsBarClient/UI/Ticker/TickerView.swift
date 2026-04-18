@@ -164,6 +164,7 @@ struct TickerView: View {
     @AppStorage("tickerSize") private var tickerSize = 2
     @AppStorage("tickerPosition") private var tickerPosition = "top"
     @AppStorage("alwaysOnTop") private var alwaysOnTop = true
+    @AppStorage("feedMix") private var feedMix: String = "shuffle"
     @State private var isMiniMode = false
 
     var body: some View {
@@ -228,6 +229,10 @@ struct TickerView: View {
                 Button("Fast (5×)") { scrollSpeed = 5.0 }
                 Button("Turbo (10×)") { scrollSpeed = 10.0 }
             } label: { Label("Speed", systemImage: "speedometer") }
+            Menu {
+                Button("Shuffle") { feedMix = "shuffle" }
+                Button("Latest") { feedMix = "latest" }
+            } label: { Label("Feed Mix", systemImage: "shuffle") }
             Toggle("Always on Top", isOn: $alwaysOnTop)
                 .onChange(of: alwaysOnTop) { _, _ in TickerWindowController.shared.applyLayout() }
             Divider()
