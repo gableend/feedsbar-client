@@ -690,10 +690,21 @@ struct SourcesOverviewTab: View {
         return out
     }
 
+    private var totalFeedCount: Int { store.feeds.count }
+    private var totalEnabledCount: Int {
+        store.feeds.filter { store.isFeedEnabled($0.id) }.count
+    }
+    private var allOn: Bool {
+        totalFeedCount > 0 && totalEnabledCount == totalFeedCount
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 header
+                if totalFeedCount > 0 {
+                    masterToggleRow
+                }
                 ForEach(SourceType.allCases, id: \.self) { type in
                     SourceTypeCard(
                         store: store,
@@ -714,6 +725,37 @@ struct SourcesOverviewTab: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 18)
         }
+    }
+
+    /// Umbrella toggle: flips every feed across every source type in one
+    /// batched store call. Lives above the type cards so the user can clear
+    /// the signal layer in one action without walking each type individually.
+    private var masterToggleRow: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("ALL SOURCES")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundColor(FeedsTheme.primaryText)
+                Text("\(totalEnabledCount)/\(totalFeedCount) enabled")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(FeedsTheme.secondaryText)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { allOn },
+                set: { newOn in
+                    let ids = store.feeds.map { $0.id }
+                    store.setFeedsEnabled(ids, enabled: newOn)
+                }
+            ))
+            .labelsHidden()
+            .toggleStyle(SignalSwitchStyle(onColor: FeedsTheme.ai))
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(0.08))
+        )
     }
 
     private var header: some View {

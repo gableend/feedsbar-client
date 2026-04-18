@@ -66,6 +66,7 @@ final class FeedStore {
         if disabledIDs.contains(id) { disabledIDs.remove(id) } else { disabledIDs.insert(id) }
         setActiveCuratedID(nil)
         writeDisabledIDs()
+        eagerClearItemsIfNoneActive()
         scheduleDebouncedRefresh()
     }
 
@@ -80,7 +81,25 @@ final class FeedStore {
         }
         setActiveCuratedID(nil)
         writeDisabledIDs()
+        eagerClearItemsIfNoneActive()
         scheduleDebouncedRefresh()
+    }
+
+    /// When the enabled-feed set becomes empty, don't wait for the 300ms
+    /// debounce + network round-trip to clear the ticker — do it synchronously
+    /// so the UI reflects the user's intent instantly. Previously, items
+    /// would keep cycling until refreshItemsOnly fired and set self.items=[],
+    /// which read as "residual feeds in the ticker" when toggling through
+    /// source types manually.
+    private func eagerClearItemsIfNoneActive() {
+        let disabled = self.disabledIDs
+        let anyActive = self.feeds.contains { f in
+            (f.isActive ?? true) && !disabled.contains(f.id)
+        }
+        if !anyActive {
+            self.items = []
+            self.statusMessage = "No active feeds"
+        }
     }
 
     /// Replace the enabled set with exactly the given feed IDs. Everything
