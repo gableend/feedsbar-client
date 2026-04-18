@@ -1201,7 +1201,7 @@ private enum CuratedCatalogue {
             feedTitles: [
                 "BBC News", "NPR Top Stories", "Al Jazeera", "Deutsche Welle",
                 "The Guardian World", "Sky News", "CBS News", "Radio Free Europe",
-                "PBS NewsHour", "The Economist", "Weltinnenpolitik"
+                "PBS NewsHour", "The Economist", "Weltinnenpolitik", "The Daily"
             ],
             isDynamic: false
         ),
@@ -1229,7 +1229,8 @@ private enum CuratedCatalogue {
                 "Hugging Face Blog", "OpenAI News", "MIT Technology Review",
                 "Google Research", "Bloomberg Technology", "Two Minute Papers",
                 "r/technology", "r/MachineLearning",
-                "OpenAI Python SDK", "Claude Code Releases"
+                "OpenAI Python SDK", "Claude Code Releases",
+                "Towards Data Science", "Hard Fork"
             ],
             isDynamic: false
         ),
@@ -1247,7 +1248,8 @@ private enum CuratedCatalogue {
                 "Y Combinator", "Lenny's Newsletter",
                 "Next.js Releases", "Node.js Releases", "Kubernetes Releases",
                 "Microsoft on GitHub",
-                "r/programming", "r/startups"
+                "r/programming", "r/startups",
+                "Better Programming", "UX Collective"
             ],
             isDynamic: false
         ),
@@ -1271,7 +1273,8 @@ private enum CuratedCatalogue {
             blurb: "Film, music, style, ideas.",
             feedTitles: [
                 "Rolling Stone", "Billboard", "Variety", "Deadline",
-                "Elle", "Vogue", "PetaPixel", "Stratechery"
+                "Elle", "Vogue", "PetaPixel", "Stratechery",
+                "Lex Fridman Podcast"
             ],
             isDynamic: false
         )
