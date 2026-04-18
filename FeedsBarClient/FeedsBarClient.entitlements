@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      FeedsBar runs in the App Sandbox. The only capability it genuinely
+      needs is outbound HTTPS to the edge API. Keeping the surface tight
+      here minimises notarization risk and satisfies "least privilege"
+      review.
+
+      Anything we add later should be justified by a user-facing feature:
+      - file-import / export: add files.user-selected.read-write
+      - audio playback (podcasts): no entitlement needed for AVAudioEngine output
+      - Sparkle under sandbox: handled by Sparkle's own XPC helpers,
+        not the main-app entitlements.
+    -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
+</dict>
+</plist>
