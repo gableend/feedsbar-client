@@ -62,3 +62,6 @@ fastlane/screenshots/**/*.png
 fastlane/test_output
 .DS_Store
 build_output.txt
+
+# Release pipeline output (scripts/release.sh)
+/build/

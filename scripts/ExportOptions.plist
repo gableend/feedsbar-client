@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Export options for Developer ID distribution outside the App Store.
+
+  - method: developer-id forces xcodebuild to use the Developer ID cert
+    chain rather than App Store / TestFlight flows.
+  - signingStyle: manual + signingCertificate matches the Release config
+    in project.pbxproj; the generic "Developer ID Application" string
+    auto-resolves to whichever matching cert lives in the login Keychain.
+  - teamID is required and must match the app's bundle team.
+-->
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>developer-id</string>
+    <key>teamID</key>
+    <string>HKFGXYWVCQ</string>
+    <key>signingStyle</key>
+    <string>manual</string>
+    <key>signingCertificate</key>
+    <string>Developer ID Application</string>
+</dict>
+</plist>
