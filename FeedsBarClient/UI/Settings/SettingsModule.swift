@@ -1201,7 +1201,8 @@ private enum CuratedCatalogue {
             feedTitles: [
                 "BBC News", "NPR Top Stories", "Al Jazeera", "Deutsche Welle",
                 "The Guardian World", "Sky News", "CBS News", "Radio Free Europe",
-                "PBS NewsHour", "The Economist", "Weltinnenpolitik", "The Daily"
+                "PBS NewsHour", "The Economist", "Weltinnenpolitik", "The Daily",
+                "GNews World"
             ],
             isDynamic: false
         ),
@@ -1230,7 +1231,7 @@ private enum CuratedCatalogue {
                 "Google Research", "Bloomberg Technology", "Two Minute Papers",
                 "r/technology", "r/MachineLearning",
                 "OpenAI Python SDK", "Claude Code Releases",
-                "Towards Data Science", "Hard Fork"
+                "Towards Data Science", "Hard Fork", "GNews Tech"
             ],
             isDynamic: false
         ),
