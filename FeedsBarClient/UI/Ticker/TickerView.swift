@@ -242,5 +242,5 @@ struct TickerView: View {
     }
 
     private func heightForSize(_ size: Int) -> CGFloat { size == 1 ? 48 : (size == 4 ? 108 : 72) }
-    private func blockWidth(_ size: Int) -> CGFloat { size == 1 ? 190 : (size == 4 ? 300 : 230) }
+    private func blockWidth(_ size: Int) -> CGFloat { size == 1 ? 190 : (size == 4 ? 360 : 290) }
 }

@@ -114,7 +114,10 @@ struct SignalRotationOrb: View {
                             .foregroundColor(color)
                             .padding(.bottom, 2)
 
-                        // Three keywords stacked vertically (white, bold, monospaced).
+                        // Three headline fragments stacked vertically. Each
+                        // element is typically a 2–3 word phrase now (was a
+                        // single word) so stacking gives a 3-line mini-
+                        // headline per orb.
                         if words.isEmpty {
                             Text("SCANNING...")
                                 .font(.system(size: keywordFontSize, weight: .bold, design: .monospaced))
@@ -125,10 +128,11 @@ struct SignalRotationOrb: View {
                                     .font(.system(size: keywordFontSize, weight: .bold, design: .monospaced))
                                     .foregroundColor(.white)
                                     .lineLimit(1)
+                                    .minimumScaleFactor(0.75)  // shrink if a phrase is wider than the column
                             }
                         }
                     }
-                    .frame(width: 140, alignment: .leading)
+                    .frame(width: 190, alignment: .leading)
                     .id(orb.id)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
