@@ -103,6 +103,11 @@ struct Orb: Codable, Identifiable, Equatable {
     let topicLabel: String
     let sentiment: Sentiment?
     let keywords: [String]?
+    /// Parallel to `keywords`: one URL (or nil) per phrase. The model picks
+    /// the item that best matches each phrase so the ticker can make the
+    /// phrase a clickable jump-to-article button. Same length as keywords
+    /// when present; element is nil when no confident match.
+    let keywordUrls: [String?]?
     let displayColor: String?
     let restingColor: String?
 
@@ -116,8 +121,20 @@ struct Orb: Codable, Identifiable, Equatable {
         case topicLabel = "topic_label"
         case sentiment
         case keywords
+        case keywordUrls = "keyword_urls"
         case displayColor = "display_color"
         case restingColor = "resting_color"
+    }
+
+    /// URL for the phrase at `index`, if the server provided one and it's a
+    /// valid http(s) URL. Returns nil for stale snapshots (pre-v3) that only
+    /// carried keywords without URLs.
+    func url(forPhraseAt index: Int) -> URL? {
+        guard let urls = keywordUrls, index >= 0, index < urls.count else { return nil }
+        guard let raw = urls[index], !raw.isEmpty else { return nil }
+        guard let u = URL(string: raw), let scheme = u.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else { return nil }
+        return u
     }
 }
 

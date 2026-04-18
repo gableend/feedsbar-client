@@ -115,20 +115,21 @@ struct SignalRotationOrb: View {
                             .padding(.bottom, 2)
 
                         // Three headline fragments stacked vertically. Each
-                        // element is typically a 2–3 word phrase now (was a
-                        // single word) so stacking gives a 3-line mini-
-                        // headline per orb.
+                        // phrase is clickable when the server paired it with
+                        // a representative article URL (v3+ orbs); earlier
+                        // payloads fall back to plain text so mixed-version
+                        // manifests keep working.
                         if words.isEmpty {
                             Text("SCANNING...")
                                 .font(.system(size: keywordFontSize, weight: .bold, design: .monospaced))
                                 .foregroundColor(FeedsTheme.secondaryText)
                         } else {
-                            ForEach(Array(words.enumerated()), id: \.offset) { _, word in
-                                Text(word.uppercased())
-                                    .font(.system(size: keywordFontSize, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.75)  // shrink if a phrase is wider than the column
+                            ForEach(Array(words.enumerated()), id: \.offset) { idx, word in
+                                OrbPhraseLabel(
+                                    text: word.uppercased(),
+                                    url: orb.url(forPhraseAt: idx),
+                                    fontSize: keywordFontSize
+                                )
                             }
                         }
                     }
@@ -151,6 +152,43 @@ struct SignalRotationOrb: View {
     private var orbSize: CGFloat { size == 1 ? 10 : (size == 4 ? 20 : 14) }
     private var eyebrowFontSize: CGFloat { size == 4 ? 11 : 9 }
     private var keywordFontSize: CGFloat { size == 4 ? 11 : 9 }
+}
+
+/// One line of the orb's stacked headline. When the server paired the phrase
+/// with a representative article URL, render it as a button that opens the
+/// article in the default browser; otherwise fall back to plain text so
+/// pre-v3 snapshots and topics without a confident pick don't look inert
+/// in a way that invites clicks that do nothing.
+private struct OrbPhraseLabel: View {
+    let text: String
+    let url: URL?
+    let fontSize: CGFloat
+    @State private var hovered = false
+
+    var body: some View {
+        if let url {
+            Button(action: {
+                NSWorkspace.shared.open(url)
+            }) {
+                Text(text)
+                    .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .underline(hovered, color: .white.opacity(0.7))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+            .buttonStyle(.plain)
+            .onHover { hovered = $0 }
+            .pointerStyle(.link)
+            .help(url.host.map { "Open on \($0)" } ?? "Open article")
+        } else {
+            Text(text)
+                .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+    }
 }
 
 // MARK: - TICKER ANIMATION LAYER (BRIDGE)
