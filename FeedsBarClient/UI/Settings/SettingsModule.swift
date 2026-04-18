@@ -1200,7 +1200,8 @@ private enum CuratedCatalogue {
             blurb: "Major international news desks.",
             feedTitles: [
                 "BBC News", "NPR Top Stories", "Al Jazeera", "Deutsche Welle",
-                "The Guardian World", "Sky News", "CBS News", "Radio Free Europe"
+                "The Guardian World", "Sky News", "CBS News", "Radio Free Europe",
+                "PBS NewsHour", "The Economist", "Weltinnenpolitik"
             ],
             isDynamic: false
         ),
@@ -1224,7 +1225,8 @@ private enum CuratedCatalogue {
             blurb: "Mainstream tech press plus AI-lab voices.",
             feedTitles: [
                 "The Verge", "TechCrunch", "Wired", "Ars Technica",
-                "Hugging Face Blog", "OpenAI News", "MIT Technology Review", "Google Research"
+                "Hugging Face Blog", "OpenAI News", "MIT Technology Review",
+                "Google Research", "Bloomberg Technology", "Two Minute Papers"
             ],
             isDynamic: false
         ),
@@ -1236,7 +1238,8 @@ private enum CuratedCatalogue {
             blurb: "Dev tools, platforms, engineering posts.",
             feedTitles: [
                 "Hacker News", "GitHub Blog", "GitHub Changelog", "Cloudflare Blog",
-                "Stripe Blog", "AWS News Blog", "Schneier on Security", "The Register"
+                "Stripe Blog", "AWS News Blog", "Schneier on Security", "The Register",
+                "Y Combinator", "Lenny's Newsletter", "Next.js Releases", "Node.js Releases"
             ],
             isDynamic: false
         ),
