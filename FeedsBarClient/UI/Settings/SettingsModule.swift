@@ -674,13 +674,13 @@ struct PreferencesTab: View {
 
 // MARK: - SOURCES OVERVIEW TAB
 /// Umbrella view that lists every supported source type as a card.
-/// Day 1: RSS is the only type with live feeds. Other types render as
-/// "Coming soon" placeholders until the worker seeds rows for them.
-/// Tapping the RSS card jumps to the dedicated RSS tab so the full feed
-/// list lives in one place.
+/// - RSS: drills into the dedicated RSS tab (113+ feeds need their own surface).
+/// - Any other type with at least one feed: expands inline with per-feed toggles.
+/// - Types with zero feeds: render as a muted "Coming soon" placeholder.
 struct SourcesOverviewTab: View {
     let store: FeedStore
     let onPickRSS: () -> Void
+    @State private var expanded: Set<SourceType> = []
 
     private var countsByType: [SourceType: Int] {
         var out: [SourceType: Int] = [:]
@@ -696,9 +696,18 @@ struct SourcesOverviewTab: View {
                 header
                 ForEach(SourceType.allCases, id: \.self) { type in
                     SourceTypeCard(
+                        store: store,
                         type: type,
                         count: countsByType[type] ?? 0,
-                        onTap: { if type == .rss { onPickRSS() } }
+                        isExpanded: expanded.contains(type),
+                        onTap: {
+                            if type == .rss {
+                                onPickRSS()
+                            } else if (countsByType[type] ?? 0) > 0 {
+                                if expanded.contains(type) { expanded.remove(type) }
+                                else { expanded.insert(type) }
+                            }
+                        }
                     )
                 }
             }
@@ -712,7 +721,7 @@ struct SourcesOverviewTab: View {
             Text("SOURCES")
                 .font(.system(size: 11, weight: .black, design: .monospaced))
                 .foregroundColor(FeedsTheme.secondaryText)
-            Text("The signal layer pulls from multiple source types. RSS is live today; others light up as they're added.")
+            Text("The signal layer pulls from multiple source types. Tap a type to manage its feeds; types with no sources yet will light up as they're added.")
                 .font(.system(size: 12))
                 .foregroundColor(FeedsTheme.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -722,55 +731,107 @@ struct SourcesOverviewTab: View {
 }
 
 private struct SourceTypeCard: View {
+    let store: FeedStore
     let type: SourceType
     let count: Int
+    let isExpanded: Bool
     let onTap: () -> Void
 
-    private var isInteractive: Bool { type == .rss }
+    private var hasFeeds: Bool { count > 0 }
+    /// RSS drills to its own tab; other types with feeds expand inline;
+    /// types with zero feeds are inert placeholders.
+    private var isInteractive: Bool { type == .rss || hasFeeds }
+
     private var statusText: String {
-        if count > 0 { return "\(count) source\(count == 1 ? "" : "s")" }
-        if type.isIngestionReady { return "None yet" }
+        if hasFeeds { return "\(count) source\(count == 1 ? "" : "s")" }
         return "Coming soon"
     }
 
+    private var chevron: String {
+        if type == .rss { return "chevron.right" }
+        if hasFeeds { return isExpanded ? "chevron.down" : "chevron.right" }
+        return ""
+    }
+
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 14) {
-                ZStack {
+        VStack(spacing: 0) {
+            Button(action: onTap) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(type.tint.opacity(isInteractive ? 0.18 : 0.10))
+                            .frame(width: 40, height: 40)
+                        Image(systemName: type.sfSymbol)
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(type.tint.opacity(isInteractive ? 1.0 : 0.55))
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(type.displayName.uppercased())
+                            .font(.system(size: 12, weight: .black, design: .monospaced))
+                            .foregroundColor(FeedsTheme.primaryText)
+                        Text(statusText)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(FeedsTheme.secondaryText)
+                    }
+
+                    Spacer()
+
+                    if !chevron.isEmpty {
+                        Image(systemName: chevron)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(FeedsTheme.iconTint)
+                    }
+                }
+                .padding(14)
+                .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(type.tint.opacity(isInteractive ? 0.18 : 0.10))
-                        .frame(width: 40, height: 40)
-                    Image(systemName: type.sfSymbol)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(type.tint.opacity(isInteractive ? 1.0 : 0.55))
-                }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(type.displayName.uppercased())
-                        .font(.system(size: 12, weight: .black, design: .monospaced))
-                        .foregroundColor(FeedsTheme.primaryText)
-                    Text(statusText)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(FeedsTheme.secondaryText)
-                }
-
-                Spacer()
-
-                if isInteractive {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(FeedsTheme.iconTint)
-                }
+                        .fill(Color.white.opacity(isInteractive ? 0.06 : 0.03))
+                )
+                .opacity(isInteractive ? 1.0 : 0.80)
             }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.white.opacity(isInteractive ? 0.06 : 0.03))
-            )
-            .opacity(isInteractive ? 1.0 : 0.80)
+            .buttonStyle(.plain)
+            .disabled(!isInteractive)
+
+            if isExpanded && hasFeeds && type != .rss {
+                SourceTypeFeedList(store: store, type: type)
+                    .padding(.top, 6)
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 8)
+            }
         }
-        .buttonStyle(.plain)
-        .disabled(!isInteractive)
+    }
+}
+
+/// Inline list of feeds for a given non-RSS source type. Reuses FeedRow
+/// (the same row used in the RSS tab) so toggle/health/count look identical.
+private struct SourceTypeFeedList: View {
+    let store: FeedStore
+    let type: SourceType
+
+    private var feeds: [FeedIndexItem] {
+        store.feeds
+            .filter { $0.effectiveSourceType == type }
+            .sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(feeds) { feed in
+                FeedRow(
+                    title: feed.title,
+                    iconUrl: feed.iconUrl,
+                    items30d: feed.items30d,
+                    health: feed.health,
+                    isEnabled: store.isFeedEnabled(feed.id),
+                    onToggle: { store.toggleFeed(feed.id) }
+                )
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(0.03))
+        )
     }
 }
 
