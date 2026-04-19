@@ -190,30 +190,56 @@ fi
 step "Submitting for notarization (this blocks 5–30 min)"
 info "Profile: $NOTARY_PROFILE"
 
-# --wait streams the submission state until it finishes. On accept we move on;
-# on reject we pull the full log so the failure reason is visible.
-NOTARY_OUTPUT=$(mktemp)
-if xcrun notarytool submit "$DMG_PATH" \
+# Submit + poll separately so a transient DNS/network blip during the wait
+# phase doesn't lose an otherwise-good submission. Without this split we hit
+# NSURLErrorDomain -1003 on the first run and wrongly treated an in-progress
+# submission as a failure.
+#
+# Step A: submit, capture the submission id.
+SUBMIT_OUTPUT=$(mktemp)
+if ! xcrun notarytool submit "$DMG_PATH" \
         --keychain-profile "$NOTARY_PROFILE" \
-        --wait \
         --output-format json \
-        2>&1 | tee "$NOTARY_OUTPUT"; then
-    :
-else
-    warn "notarytool submit returned non-zero — checking outcome"
+        2>&1 | tee "$SUBMIT_OUTPUT"; then
+    rm -f "$SUBMIT_OUTPUT"
+    die "notarytool submit failed — check network / credentials and re-run"
 fi
+SUB_ID=$(grep -oE '"id": *"[0-9a-f-]+"' "$SUBMIT_OUTPUT" | head -1 | awk -F'"' '{print $4}')
+rm -f "$SUBMIT_OUTPUT"
+[[ -n "$SUB_ID" ]] || die "couldn't parse submission id from notarytool output"
+ok "Submitted (id=$SUB_ID) — polling Apple for status"
 
-# Parse submission id + status out of the JSON stream.
-STATUS=$(grep -oE '"status": *"[A-Za-z]+"' "$NOTARY_OUTPUT" | tail -1 | awk -F'"' '{print $4}')
-SUB_ID=$(grep -oE '"id": *"[0-9a-f-]+"' "$NOTARY_OUTPUT" | tail -1 | awk -F'"' '{print $4}')
-rm -f "$NOTARY_OUTPUT"
+# Step B: poll until the status settles. Tolerates transient lookup errors
+# by retrying; if Apple's status API is down we keep trying every 30s until
+# the overall MAX_WAIT_MIN elapses.
+POLL_INTERVAL=30
+MAX_WAIT_MIN=30
+DEADLINE=$(( $(date +%s) + MAX_WAIT_MIN * 60 ))
+STATUS=""
+while true; do
+    if [[ $(date +%s) -gt $DEADLINE ]]; then
+        die "Notarization still in progress after ${MAX_WAIT_MIN}m — resume with: xcrun notarytool wait $SUB_ID --keychain-profile $NOTARY_PROFILE"
+    fi
+    INFO=$(xcrun notarytool info "$SUB_ID" --keychain-profile "$NOTARY_PROFILE" 2>&1 || true)
+    STATUS=$(echo "$INFO" | awk '/^  status: /{print $2; exit}')
+    case "$STATUS" in
+        Accepted) break ;;
+        Invalid|Rejected) break ;;
+        "In Progress"|"")
+            info "Status: ${STATUS:-transient error} — checking again in ${POLL_INTERVAL}s"
+            sleep "$POLL_INTERVAL"
+            ;;
+        *)
+            info "Unexpected status '$STATUS' — retrying"
+            sleep "$POLL_INTERVAL"
+            ;;
+    esac
+done
 
 if [[ "$STATUS" != "Accepted" ]]; then
-    warn "Notarization status: ${STATUS:-unknown} (id=${SUB_ID:-n/a})"
-    if [[ -n "${SUB_ID:-}" ]]; then
-        warn "Pulling Apple's log for diagnosis:"
-        xcrun notarytool log "$SUB_ID" --keychain-profile "$NOTARY_PROFILE" || true
-    fi
+    warn "Notarization status: $STATUS (id=$SUB_ID)"
+    warn "Apple's log:"
+    xcrun notarytool log "$SUB_ID" --keychain-profile "$NOTARY_PROFILE" || true
     die "Notarization failed"
 fi
 ok "Notarization accepted (id=$SUB_ID)"
