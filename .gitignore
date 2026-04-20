@@ -65,3 +65,7 @@ build_output.txt
 
 # Release pipeline output (scripts/release.sh)
 /build/
+
+# Icon master — only the sliced variants in AppIcon.appiconset ship in git.
+/icon-source.png
+/icon-source.*.png
