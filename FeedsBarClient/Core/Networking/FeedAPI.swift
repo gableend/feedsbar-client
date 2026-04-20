@@ -88,10 +88,18 @@ actor FeedAPI {
             }
 
             if (200...299).contains(http.statusCode) {
+                // Decode FIRST, cache the ETag only on success. If we cache
+                // the ETag before a failed decode, every subsequent request
+                // sends If-None-Match, the server happily returns 304, and
+                // the client keeps its stale cache forever — a single schema
+                // mismatch becomes a permanent stuck state. Saw this happen
+                // the day we shipped keyword_urls: one decode hiccup and
+                // the orbs never refreshed until snapshot/v1 got wiped.
+                let decoded = try decoder.decode(T.self, from: data)
                 if let newTag = http.value(forHTTPHeaderField: "Etag") {
                     etagCache[endpoint] = newTag
                 }
-                return try decoder.decode(T.self, from: data)
+                return decoded
             }
 
             lastStatus = http.statusCode

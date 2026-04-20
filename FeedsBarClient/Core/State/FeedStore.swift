@@ -165,7 +165,12 @@ final class FeedStore {
         var items: [FeedItem]
         var cachedAt: Date
     }
-    private let cacheKey = "feedstore.snapshot.v1"
+    // v2 keeps the shape identical to v1 but rotates the storage key so a
+    // snapshot persisted before keyword_urls shipped doesn't re-hydrate on
+    // launch with stale Orb objects. Switching keys forces one network
+    // round-trip of fresh data on the next cold launch, after which the new
+    // snapshot carries the richer shape and everything steady-states.
+    private let cacheKey = "feedstore.snapshot.v2"
 
     private func hydrateFromCache() {
         guard let data = UserDefaults.standard.data(forKey: cacheKey) else { return }
