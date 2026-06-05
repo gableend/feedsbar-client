@@ -1,6 +1,13 @@
 import SwiftUI
 import Combine
 
+private extension View {
+    @ViewBuilder
+    func linkPointerCursor() -> some View {
+        if #available(macOS 15.0, *) { self.pointerStyle(.link) } else { self }
+    }
+}
+
 // MARK: - FIXED SIGNAL WIDGET
 struct FixedBrandBlock: View {
     let store: FeedStore
@@ -179,7 +186,7 @@ private struct OrbPhraseLabel: View {
             }
             .buttonStyle(.plain)
             .onHover { hovered = $0 }
-            .pointerStyle(.link)
+            .linkPointerCursor()
             .help(url.host.map { "Open on \($0)" } ?? "Open article")
         } else {
             Text(text)
