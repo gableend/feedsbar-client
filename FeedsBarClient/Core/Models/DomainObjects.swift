@@ -110,10 +110,41 @@ struct Orb: Codable, Identifiable, Equatable {
     let keywordUrls: [String?]?
     let displayColor: String?
     let restingColor: String?
+    /// How fast the topic is moving. `perHour` is items/hour over the server's
+    /// window; `ui` is a coarse textual band. Drives the orb's glow intensity.
+    /// Nil for pre-velocity snapshots (carried in cache before this shipped).
+    let velocity: Velocity?
+    /// Item count in the server's window. Secondary signal; reserved for future
+    /// UI (kept here so the snapshot round-trips it).
+    let volume: Int?
+    /// Server's per-topic pick of the strongest items, id + score, sorted by
+    /// score desc. Focus mode pins the ticker to these (intersected with the
+    /// items we actually hold) plus keyword matches.
+    let topItems: [TopItem]?
 
     struct Sentiment: Codable, Equatable {
         let score: Double?
         let label: String?
+    }
+
+    struct Velocity: Codable, Equatable {
+        let perHour: Double?
+        let ui: String?
+
+        enum CodingKeys: String, CodingKey {
+            case perHour = "per_hour"
+            case ui
+        }
+    }
+
+    struct TopItem: Codable, Equatable {
+        let itemId: String
+        let score: Double?
+
+        enum CodingKeys: String, CodingKey {
+            case itemId = "item_id"
+            case score
+        }
     }
 
     enum CodingKeys: String, CodingKey {
@@ -124,6 +155,37 @@ struct Orb: Codable, Identifiable, Equatable {
         case keywordUrls = "keyword_urls"
         case displayColor = "display_color"
         case restingColor = "resting_color"
+        case velocity
+        case volume
+        case topItems = "top_items"
+    }
+
+    /// Normalized 0…1 glow intensity for the rotating orb. Driven by velocity
+    /// (items/hour) with a soft saturating curve so a single burst doesn't peg
+    /// it; falls back to the coarse `ui` band when the server only sent that,
+    /// and to a calm 0 when neither is present (old cache / quiet topic).
+    var glowIntensity: Double {
+        if let perHour = velocity?.perHour, perHour > 0 {
+            // ~0.5 around 6/hr, saturating toward 1 well past 30/hr.
+            return min(1.0, perHour / (perHour + 6.0))
+        }
+        switch (velocity?.ui ?? "").lowercased() {
+        case "surging", "spiking", "hot", "high": return 0.9
+        case "rising", "climbing", "medium":      return 0.55
+        case "steady", "calm", "low":             return 0.2
+        default:                                   return 0
+        }
+    }
+
+    /// Lowercased, non-empty headline phrases — used for keyword matching by
+    /// focus mode and the mute/follow affordances.
+    var keywordSet: [String] {
+        (keywords ?? []).map { $0.lowercased() }.filter { !$0.isEmpty }
+    }
+
+    /// Item IDs the server flagged as this topic's strongest, for focus mode.
+    var topItemIDs: Set<String> {
+        Set((topItems ?? []).map { $0.itemId })
     }
 
     /// URL for the phrase at `index`, if the server provided one and it's a
@@ -284,6 +346,15 @@ extension FeedItem {
     
     var accentColor: Color {
         FeedsTheme.categoryColor(for: source?.title ?? "")
+    }
+
+    /// Case-insensitive substring match of any phrase against the title (and
+    /// source name). Phrases must already be lowercased. Shared by focus mode,
+    /// keyword mute, and keyword follow so matching stays consistent.
+    func matchesAny(_ lowercasedPhrases: [String]) -> Bool {
+        guard !lowercasedPhrases.isEmpty else { return false }
+        let hay = (displayTitle + " " + (source?.title ?? "")).lowercased()
+        return lowercasedPhrases.contains { !$0.isEmpty && hay.contains($0) }
     }
 }
 

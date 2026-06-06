@@ -15,17 +15,13 @@ struct FeedsBarClientApp: App {
                     LoadingSplashView(size: 2)
                 case .running:
                     TickerView(store: store)
-                case .error(let msg):
-                    VStack {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.largeTitle)
-                            .foregroundColor(.red)
-                        Text(msg)
-                            .padding()
-                        Button("Retry") {
-                            Task { await store.boot() }
-                        }
-                    }
+                case .error:
+                    // Calm degradation: a failed cold-launch fetch (offline or a
+                    // server blip) reuses the same quiet splash as .booting rather
+                    // than a red alarm card. The heartbeat + NWPathMonitor retry on
+                    // their own and flip to .running the moment data arrives, so no
+                    // manual Retry button is needed here.
+                    LoadingSplashView(size: 2)
                 }
             }
             .frame(maxWidth: .infinity)

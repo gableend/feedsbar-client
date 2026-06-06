@@ -28,6 +28,10 @@ struct TickerView: View {
                         scrollSpeed: $scrollSpeed
                     )
                     .clipped()
+                    // Calm offline degradation: gently fade the stream so it
+                    // reads as "last known" rather than live, while still
+                    // scrolling the cached items.
+                    .opacity(store.isOnline ? 1.0 : 0.8)
 
                     // Left Side Fade
                     LinearGradient(
@@ -47,6 +51,22 @@ struct TickerView: View {
                 isMiniMode: $isMiniMode
             )
             .zIndex(10)
+
+            // LAYER 4: Status chips — focus + offline, quiet and right-aligned.
+            if !isMiniMode {
+                HStack(spacing: 8) {
+                    Spacer()
+                    if let orb = store.focusedOrb {
+                        FocusChip(label: orb.topicLabel) { store.clearFocus() }
+                    }
+                    if !store.isOnline {
+                        OfflineChip(relative: store.relativeLastUpdated)
+                    }
+                }
+                .padding(.trailing, 14)
+                .zIndex(11)
+                .allowsHitTesting(store.focusedOrb != nil)
+            }
         }
         .frame(height: heightForSize(tickerSize))
         .contextMenu {

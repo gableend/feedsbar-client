@@ -1,6 +1,7 @@
 import SwiftUI
 import Observation
 import Combine
+import Network
 import OSLog
 
 private let log = Logger(subsystem: "bar.feeds.client", category: "feedstore")
@@ -28,7 +29,16 @@ final class FeedStore {
     var phase: AppPhase = .booting
     var statusMessage: String = "Initializing..."
     var lastUpdated: Date?
-    
+
+    /// Reachability, for calm offline degradation. We keep painting the last
+    /// cached ticker and show a quiet indicator rather than an alarm when the
+    /// network drops. Updated off a background NWPathMonitor.
+    var isOnline: Bool = true
+
+    /// Focus mode: when set, the ticker is pinned to this topic's items. Toggled
+    /// by tapping the rotating orb; cleared by tapping it again or the chip.
+    var focusedTopicID: String?
+
     // Source of Truth
     var topics: [Topic] = []
     var orbs: [Orb] = []
@@ -40,6 +50,60 @@ final class FeedStore {
 
     private let api = FeedAPI()
     private var heartbeatTask: Task<Void, Never>?
+    private var pathMonitor: NWPathMonitor?
+    private let pathMonitorQueue = DispatchQueue(label: "bar.feeds.client.pathmonitor")
+
+    // MARK: - Focus Mode
+
+    /// The orb currently focused, if any.
+    var focusedOrb: Orb? {
+        guard let id = focusedTopicID else { return nil }
+        return orbs.first { $0.id == id }
+    }
+
+    /// Toggle focus for a topic — tapping the same orb again exits focus.
+    func toggleFocus(_ topicID: String) {
+        focusedTopicID = (focusedTopicID == topicID) ? nil : topicID
+    }
+
+    func clearFocus() { focusedTopicID = nil }
+
+    // MARK: - Connectivity
+
+    private func startConnectivityMonitor() {
+        guard pathMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        pathMonitor = monitor
+        monitor.pathUpdateHandler = { [weak self] path in
+            let online = path.status == .satisfied
+            Task { @MainActor in
+                guard let self else { return }
+                let wasOffline = !self.isOnline
+                self.isOnline = online
+                // Reconnected after a drop — refresh now instead of waiting out
+                // the 5-minute heartbeat.
+                if online && wasOffline {
+                    await self.refreshAll()
+                }
+            }
+        }
+        monitor.start(queue: pathMonitorQueue)
+    }
+
+    /// Calm wording for the empty-state error: only call it "Connection Failed"
+    /// when we're actually online (a server problem); say "Offline" otherwise.
+    private var connectionFailureMessage: String {
+        isOnline ? "Connection Failed. Retrying…" : "Offline — reconnecting…"
+    }
+
+    /// Short "updated 3m ago" string for the offline indicator. Nil until the
+    /// first successful (or cached) load.
+    var relativeLastUpdated: String? {
+        guard let lastUpdated else { return nil }
+        let fmt = RelativeDateTimeFormatter()
+        fmt.unitsStyle = .short
+        return fmt.localizedString(for: lastUpdated, relativeTo: Date())
+    }
 
     // MARK: - Feed Enable/Disable
     // Stored property so @Observable tracks reads and any view computing
@@ -170,7 +234,9 @@ final class FeedStore {
     // launch with stale Orb objects. Switching keys forces one network
     // round-trip of fresh data on the next cold launch, after which the new
     // snapshot carries the richer shape and everything steady-states.
-    private let cacheKey = "feedstore.snapshot.v2"
+    // v3 rotates the key for the Orb shape change (velocity / volume / top_items
+    // added) — forces one fresh fetch so the cache carries the richer orbs.
+    private let cacheKey = "feedstore.snapshot.v3"
 
     private func hydrateFromCache() {
         guard let data = UserDefaults.standard.data(forKey: cacheKey) else { return }
@@ -219,6 +285,10 @@ final class FeedStore {
         //    an empty ticker on cold launch.
         hydrateFromCache()
 
+        // Watch reachability so we can degrade calmly offline and snap back
+        // the moment the connection returns.
+        startConnectivityMonitor()
+
         heartbeatTask = Task {
             if items.isEmpty {
                 statusMessage = "Connecting to Signal Layer..."
@@ -257,7 +327,7 @@ final class FeedStore {
         } catch {
             log.error("manifest fetch failed: \(String(describing: error), privacy: .public)")
             if items.isEmpty {
-                self.phase = .error("Connection Failed. Retrying...")
+                self.phase = .error(connectionFailureMessage)
                 return
             }
         }
@@ -295,7 +365,7 @@ final class FeedStore {
         } catch {
             log.error("items fetch failed: \(String(describing: error), privacy: .public)")
             if items.isEmpty {
-                self.phase = .error("Connection Failed. Retrying...")
+                self.phase = .error(connectionFailureMessage)
             }
         }
 
@@ -362,6 +432,139 @@ final class FeedStore {
         // Mocking Dublin baseline for now.
         // Future: Integrate CoreLocation or a dedicated /v1_weather endpoint.
         return WeatherInfo(temp: "12°C", condition: "Cloudy", icon: "cloud.sun.fill")
+    }
+}
+
+// MARK: - READ STORE
+/// Tracks which items the user has opened, persisted so reads survive across
+/// sessions. Kept separate from FeedStore (which churns its `items` on every
+/// refresh) so read state outlives any single batch. Lives as a shared
+/// ObservableObject — TickerRow observes it and dims read items in place
+/// without forcing the marquee strip to rebuild (opacity doesn't change layout).
+@MainActor
+final class ReadStore: ObservableObject {
+    static let shared = ReadStore()
+
+    private static let key = "readItemIDs.v1"
+    /// Bound the history so a long-running install doesn't grow UserDefaults
+    /// without limit. Oldest reads fall off first.
+    private static let cap = 5000
+
+    // `order` is most-recent-last for FIFO trimming; `ids` mirrors it for O(1)
+    // membership checks during render.
+    private var order: [String]
+    private var ids: Set<String>
+
+    /// Bumped on every mutation so observers re-render. The id sets are private
+    /// so views can't accidentally depend on their identity.
+    @Published private(set) var revision = 0
+
+    private init() {
+        let saved = UserDefaults.standard.stringArray(forKey: ReadStore.key) ?? []
+        order = saved
+        ids = Set(saved)
+    }
+
+    var count: Int { ids.count }
+
+    func isRead(_ id: String) -> Bool { ids.contains(id) }
+
+    func markRead(_ id: String) {
+        guard !id.isEmpty, !ids.contains(id) else { return }
+        ids.insert(id)
+        order.append(id)
+        if order.count > ReadStore.cap {
+            let overflow = order.count - ReadStore.cap
+            for dropped in order.prefix(overflow) { ids.remove(dropped) }
+            order.removeFirst(overflow)
+        }
+        persist()
+        revision &+= 1
+    }
+
+    func clear() {
+        guard !ids.isEmpty else { return }
+        ids.removeAll()
+        order.removeAll()
+        persist()
+        revision &+= 1
+    }
+
+    private func persist() {
+        UserDefaults.standard.set(order, forKey: ReadStore.key)
+    }
+}
+
+// MARK: - FILTER STORE
+/// User keyword filters: muted phrases hide matching items from the ticker;
+/// followed phrases pull matching items to the front. Persisted across
+/// sessions. Shared ObservableObject so the ticker re-filters live and the
+/// Settings UI and orb context menus stay in sync.
+@MainActor
+final class FilterStore: ObservableObject {
+    static let shared = FilterStore()
+
+    private static let mutedKey = "mutedPhrases.v1"
+    private static let followedKey = "followedPhrases.v1"
+
+    @Published private(set) var muted: [String]
+    @Published private(set) var followed: [String]
+
+    private init() {
+        muted = UserDefaults.standard.stringArray(forKey: FilterStore.mutedKey) ?? []
+        followed = UserDefaults.standard.stringArray(forKey: FilterStore.followedKey) ?? []
+    }
+
+    /// Lowercased views for substring matching against item titles.
+    var mutedLowercased: [String] { muted.map { $0.lowercased() } }
+    var followedLowercased: [String] { followed.map { $0.lowercased() } }
+
+    func isMuted(_ phrase: String) -> Bool {
+        muted.contains { $0.caseInsensitiveCompare(phrase) == .orderedSame }
+    }
+
+    func isFollowed(_ phrase: String) -> Bool {
+        followed.contains { $0.caseInsensitiveCompare(phrase) == .orderedSame }
+    }
+
+    func addMuted(_ phrase: String) {
+        let p = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !p.isEmpty, !isMuted(p) else { return }
+        muted.append(p)
+        // Muting a phrase you were following is contradictory — drop the follow.
+        followed.removeAll { $0.caseInsensitiveCompare(p) == .orderedSame }
+        persist()
+    }
+
+    func removeMuted(_ phrase: String) {
+        muted.removeAll { $0.caseInsensitiveCompare(phrase) == .orderedSame }
+        persist()
+    }
+
+    func toggleMuted(_ phrase: String) {
+        isMuted(phrase) ? removeMuted(phrase) : addMuted(phrase)
+    }
+
+    func addFollowed(_ phrase: String) {
+        let p = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !p.isEmpty, !isFollowed(p) else { return }
+        followed.append(p)
+        muted.removeAll { $0.caseInsensitiveCompare(p) == .orderedSame }
+        persist()
+    }
+
+    func removeFollowed(_ phrase: String) {
+        followed.removeAll { $0.caseInsensitiveCompare(phrase) == .orderedSame }
+        persist()
+    }
+
+    func toggleFollowed(_ phrase: String) {
+        isFollowed(phrase) ? removeFollowed(phrase) : addFollowed(phrase)
+    }
+
+    private func persist() {
+        UserDefaults.standard.set(muted, forKey: FilterStore.mutedKey)
+        UserDefaults.standard.set(followed, forKey: FilterStore.followedKey)
     }
 }
 

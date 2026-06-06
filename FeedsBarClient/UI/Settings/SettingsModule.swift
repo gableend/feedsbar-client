@@ -146,6 +146,7 @@ struct SettingsView: View {
     enum SettingsTab: String, CaseIterable {
         case home = "Home"
         case preferences = "Preferences"
+        case filters = "Filters"
         case curated = "Curated"
         case sources = "Sources"
         case rss = "RSS"
@@ -183,6 +184,7 @@ struct SettingsView: View {
                 switch selectedTab {
                 case .home: HomeTab(store: store)
                 case .preferences: PreferencesTab()
+                case .filters: FiltersTab()
                 case .curated: CuratedTab(store: store)
                 case .sources: SourcesOverviewTab(store: store, onPickRSS: { selectedTab = .rss })
                 case .rss: RSSTab(store: store)
@@ -198,6 +200,7 @@ struct SettingsView: View {
         switch tab {
         case .home: return "house"
         case .preferences: return "slider.horizontal.3"
+        case .filters: return "line.3.horizontal.decrease.circle"
         case .curated: return "sparkles"
         case .sources: return "square.stack.3d.up"
         case .rss: return "dot.radiowaves.left.and.right"
@@ -673,6 +676,146 @@ struct PreferencesTab: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 18)
         }
+    }
+}
+
+// MARK: - FILTERS TAB
+/// Reading + keyword controls: dim/clear opened items, and manage muted and
+/// followed phrases. All state lives in the shared ReadStore / FilterStore and
+/// persists across sessions.
+struct FiltersTab: View {
+    @ObservedObject private var filters = FilterStore.shared
+    @ObservedObject private var readStore = ReadStore.shared
+    @AppStorage("dimReadItems") private var dimReadItems = true
+
+    @State private var newMuted = ""
+    @State private var newFollowed = ""
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                // READING
+                ConfigSection(title: "READING") {
+                    ConfigRow(label: "Dim items I've opened") {
+                        Toggle("", isOn: $dimReadItems)
+                            .labelsHidden()
+                            .toggleStyle(SignalSwitchStyle(onColor: FeedsTheme.ai))
+                    }
+                    ConfigRow(label: "Read history") {
+                        Button("CLEAR (\(readStore.count))") { readStore.clear() }
+                            .font(.system(size: 10, weight: .bold))
+                            .padding(6)
+                            .background(FeedsTheme.inputBackground)
+                            .foregroundColor(.white)
+                            .cornerRadius(4)
+                            .buttonStyle(.plain)
+                            .disabled(readStore.count == 0)
+                    }
+                }
+
+                phraseSection(
+                    title: "MUTED PHRASES",
+                    hint: "Items whose headline contains a muted phrase are hidden from the ticker.",
+                    phrases: filters.muted,
+                    newText: $newMuted,
+                    accent: FeedsTheme.utility,
+                    onAdd: { filters.addMuted($0) },
+                    onRemove: { filters.removeMuted($0) }
+                )
+
+                phraseSection(
+                    title: "FOLLOWED PHRASES",
+                    hint: "Items matching a followed phrase are pulled to the front of the ticker.",
+                    phrases: filters.followed,
+                    newText: $newFollowed,
+                    accent: FeedsTheme.success,
+                    onAdd: { filters.addFollowed($0) },
+                    onRemove: { filters.removeFollowed($0) }
+                )
+
+                Text("Tip: right-click any phrase on the rotating orb to mute or follow it instantly.")
+                    .font(.system(size: 11))
+                    .foregroundColor(FeedsTheme.secondaryText)
+                    .padding(.top, 4)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 18)
+        }
+    }
+
+    @ViewBuilder
+    private func phraseSection(
+        title: String,
+        hint: String,
+        phrases: [String],
+        newText: Binding<String>,
+        accent: Color,
+        onAdd: @escaping (String) -> Void,
+        onRemove: @escaping (String) -> Void
+    ) -> some View {
+        ConfigSection(title: title) {
+            VStack(alignment: .leading, spacing: 0) {
+                if phrases.isEmpty {
+                    HStack {
+                        Text("None yet")
+                            .font(.system(size: 12))
+                            .foregroundColor(FeedsTheme.secondaryText)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(FeedsTheme.surface)
+                } else {
+                    ForEach(phrases, id: \.self) { phrase in
+                        HStack(spacing: 10) {
+                            Circle().fill(accent).frame(width: 6, height: 6)
+                            Text(phrase).font(.system(size: 13)).foregroundColor(.white)
+                            Spacer()
+                            Button(action: { onRemove(phrase) }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(FeedsTheme.secondaryText)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(FeedsTheme.surface)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    TextField("Add phrase…", text: newText)
+                        .textFieldStyle(PlainTextFieldStyle())
+                        .padding(6)
+                        .background(FeedsTheme.inputBackground)
+                        .cornerRadius(4)
+                        .foregroundColor(.white)
+                        .onSubmit { commit(newText, onAdd) }
+                    Button("ADD") { commit(newText, onAdd) }
+                        .font(.system(size: 10, weight: .bold))
+                        .padding(6)
+                        .background(accent)
+                        .foregroundColor(.white)
+                        .cornerRadius(4)
+                        .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(FeedsTheme.surface)
+            }
+        }
+
+        Text(hint)
+            .font(.system(size: 11))
+            .foregroundColor(FeedsTheme.secondaryText)
+            .padding(.leading, 2)
+    }
+
+    private func commit(_ text: Binding<String>, _ onAdd: (String) -> Void) {
+        let v = text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !v.isEmpty else { return }
+        onAdd(v)
+        text.wrappedValue = ""
     }
 }
 
