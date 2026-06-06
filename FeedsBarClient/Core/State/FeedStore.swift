@@ -124,6 +124,18 @@ final class FeedStore {
     /// True when more feeds are enabled than the ticker will pull from.
     var isOverFeedCap: Bool { enabledFeedCount > FeedStore.activeFeedCap }
 
+    /// The feed IDs actually sent to the items-batch endpoint: active + enabled,
+    /// capped to `activeFeedCap`, in manifest order. Single source of truth for
+    /// the fetch *and* the debug screen, so "what the ticker pulls" can never
+    /// drift from what we request.
+    var activeFeedIDsForBatch: [String] {
+        let disabled = disabledIDs
+        return feeds
+            .filter { ($0.isActive ?? true) && !disabled.contains($0.id) }
+            .prefix(FeedStore.activeFeedCap)
+            .map { $0.id }
+    }
+
     // Stored property so @Observable tracks reads and any view computing
     // `isFeedEnabled(id)` re-renders the instant this Set changes.
     // Mirrored to UserDefaults on every write for persistence.
@@ -352,11 +364,7 @@ final class FeedStore {
 
         // 2) Items batch — key is derived from the current enabled-feed set.
         //    Toggling a feed changes the URL → new ETag key → fresh response.
-        let disabled = self.disabledIDs
-        let activeFeedIDs = self.feeds
-            .filter { ($0.isActive ?? true) && !disabled.contains($0.id) }
-            .prefix(FeedStore.activeFeedCap)
-            .map { $0.id }
+        let activeFeedIDs = self.activeFeedIDsForBatch
 
         do {
             if activeFeedIDs.isEmpty {
@@ -408,11 +416,7 @@ final class FeedStore {
     /// using the current cached manifest. Avoids the manifest + orbs fetches
     /// that `refreshAll()` does on heartbeat.
     func refreshItemsOnly() async {
-        let disabled = self.disabledIDs
-        let activeFeedIDs = self.feeds
-            .filter { ($0.isActive ?? true) && !disabled.contains($0.id) }
-            .prefix(FeedStore.activeFeedCap)
-            .map { $0.id }
+        let activeFeedIDs = self.activeFeedIDsForBatch
 
         // Dynamic curated sets (Pulse) want a tight recency window so the
         // ticker doesn't surface yesterday's items from feeds that happened

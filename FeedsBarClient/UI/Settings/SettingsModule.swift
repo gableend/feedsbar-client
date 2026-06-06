@@ -150,6 +150,7 @@ struct SettingsView: View {
         case curated = "Curated"
         case sources = "Sources"
         case rss = "RSS"
+        case debug = "Debug"
         case about = "About"
     }
 
@@ -188,6 +189,7 @@ struct SettingsView: View {
                 case .curated: CuratedTab(store: store)
                 case .sources: SourcesOverviewTab(store: store, onPickRSS: { selectedTab = .rss })
                 case .rss: RSSTab(store: store)
+                case .debug: DebugTab(store: store)
                 case .about: AboutTab(store: store)
                 }
             }
@@ -204,6 +206,7 @@ struct SettingsView: View {
         case .curated: return "sparkles"
         case .sources: return "square.stack.3d.up"
         case .rss: return "dot.radiowaves.left.and.right"
+        case .debug: return "ladybug"
         case .about: return "info.circle"
         }
     }
@@ -946,6 +949,207 @@ struct SourcesOverviewTab: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.bottom, 4)
+    }
+}
+
+// MARK: - DEBUG TAB
+/// Diagnostics panel: selection state (orb focus, filters, enabled feeds,
+/// curated bundle) side by side with what the ticker is actually requesting
+/// and rendering. When a selection appears not to propagate, the mismatch —
+/// e.g. a feed that's requested but returns zero items — shows up here instead
+/// of being invisible.
+struct DebugTab: View {
+    let store: FeedStore
+    @ObservedObject private var filters = FilterStore.shared
+    @ObservedObject private var readStore = ReadStore.shared
+
+    /// feed_id → display name, from the manifest.
+    private var feedNames: [String: String] {
+        Dictionary(store.feeds.map { ($0.id, $0.title) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    /// The exact IDs the items-batch fetch sends (active + enabled, capped).
+    private var requestedIDs: [String] { store.activeFeedIDsForBatch }
+
+    /// Distinct feeds present in the items we currently hold, newest-count first.
+    private var presentCounts: [(id: String, title: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        var titles: [String: String] = [:]
+        for item in store.items {
+            guard let fid = item.source?.id else { continue }
+            counts[fid, default: 0] += 1
+            if titles[fid] == nil { titles[fid] = item.source?.title ?? feedNames[fid] }
+        }
+        return counts
+            .map { (id: $0.key, title: titles[$0.key] ?? $0.key, count: $0.value) }
+            .sorted { $0.count > $1.count }
+    }
+
+    /// Requested but returned zero items — the prime "selection didn't
+    /// propagate" smell (enabled + sent to the server, nothing came back).
+    private var silentFeeds: [(id: String, title: String)] {
+        let present = Set(store.items.compactMap { $0.source?.id })
+        return requestedIDs
+            .filter { !present.contains($0) }
+            .map { (id: $0, title: feedNames[$0] ?? $0) }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                titleRow
+                selectionCard
+                pullCard
+                liveCard
+                mismatchCard
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 18)
+        }
+    }
+
+    private var titleRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("DEBUG")
+                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                    .foregroundColor(FeedsTheme.secondaryText)
+                Text("Selection state vs. what the ticker is actually pulling and rendering.")
+                    .font(.system(size: 12))
+                    .foregroundColor(FeedsTheme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button {
+                Task { await store.refreshAll() }
+            } label: {
+                Label("Refresh", systemImage: "arrow.clockwise")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(FeedsTheme.ai)
+        }
+        .padding(.bottom, 2)
+    }
+
+    // MARK: Cards
+
+    private var selectionCard: some View {
+        card("SELECTION STATE") {
+            kv("Orb focus", store.focusedOrb?.topicLabel ?? "—")
+            kv("Curated bundle", store.activeCuratedID ?? "—")
+            kv("Feeds enabled", "\(store.enabledFeedCount) of \(store.feeds.count)",
+               accent: store.isOverFeedCap ? .orange : FeedsTheme.primaryText)
+            kv("Muted phrases", filters.muted.isEmpty ? "none" : "\(filters.muted.count)")
+            if !filters.muted.isEmpty { chips(filters.muted) }
+            kv("Followed phrases", filters.followed.isEmpty ? "none" : "\(filters.followed.count)")
+            if !filters.followed.isEmpty { chips(filters.followed) }
+            kv("Read items (session-persisted)", "\(readStore.count)")
+        }
+    }
+
+    private var pullCard: some View {
+        card("WHAT THE TICKER REQUESTS") {
+            kv("Feeds requested",
+               "\(requestedIDs.count)\(store.isOverFeedCap ? " (capped at \(FeedStore.activeFeedCap))" : "")",
+               accent: store.isOverFeedCap ? .orange : FeedsTheme.primaryText)
+            kv("Connection", store.isOnline ? "online" : "offline",
+               accent: store.isOnline ? .green : .orange)
+            kv("Status", store.statusMessage)
+            kv("Last updated", store.relativeLastUpdated ?? "never")
+            if requestedIDs.isEmpty {
+                note("No feeds requested — nothing enabled, so the ticker is empty by design.")
+            } else {
+                ForEach(requestedIDs, id: \.self) { id in
+                    listRow(feedNames[id] ?? id, mono: feedNames[id] == nil)
+                }
+            }
+        }
+    }
+
+    private var liveCard: some View {
+        card("WHAT THE TICKER HOLDS") {
+            kv("Items held", "\(store.items.count)")
+            kv("Distinct feeds rendering", "\(presentCounts.count)")
+            if presentCounts.isEmpty {
+                note("No items held yet.")
+            } else {
+                ForEach(presentCounts, id: \.id) { f in
+                    listRow("\(f.title)  ·  \(f.count)")
+                }
+            }
+        }
+    }
+
+    private var mismatchCard: some View {
+        card("MISMATCHES") {
+            if store.isOverFeedCap {
+                note("\(store.enabledFeedCount - FeedStore.activeFeedCap) enabled feed(s) are NOT requested — over the \(FeedStore.activeFeedCap)-feed performance cap.",
+                     color: .orange)
+            }
+            if silentFeeds.isEmpty {
+                kv("Requested with no items", "none",
+                   accent: store.items.isEmpty ? FeedsTheme.secondaryText : .green)
+            } else {
+                note("Requested but returned zero items — selection reached the server but nothing came back (broken/quiet feed, or a propagation bug):",
+                     color: .orange)
+                ForEach(silentFeeds, id: \.id) { f in
+                    listRow(f.title, color: .orange)
+                }
+            }
+        }
+    }
+
+    // MARK: Building blocks
+
+    private func card(_ heading: String, @ViewBuilder _ content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(heading)
+                .font(.system(size: 11, weight: .black, design: .monospaced))
+                .foregroundColor(FeedsTheme.secondaryText)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.05)))
+    }
+
+    private func kv(_ key: String, _ value: String, accent: Color = FeedsTheme.primaryText) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(key)
+                .font(.system(size: 12))
+                .foregroundColor(FeedsTheme.secondaryText)
+            Spacer()
+            Text(value)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundColor(accent)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+
+    private func listRow(_ text: String, color: Color = FeedsTheme.primaryText, mono: Bool = false) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium, design: mono ? .monospaced : .default))
+            .foregroundColor(color.opacity(0.9))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 6)
+    }
+
+    private func note(_ text: String, color: Color = FeedsTheme.secondaryText) -> some View {
+        Text(text)
+            .font(.system(size: 11))
+            .foregroundColor(color)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func chips(_ items: [String]) -> some View {
+        Text(items.joined(separator: " · "))
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundColor(FeedsTheme.primaryText.opacity(0.85))
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 6)
     }
 }
 
