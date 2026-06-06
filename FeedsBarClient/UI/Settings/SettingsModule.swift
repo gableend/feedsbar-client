@@ -50,7 +50,11 @@ final class TickerWindowController: ObservableObject {
         window.level = alwaysOnTop ? .floating : .normal
 
         let height = Self.heightForSize(tickerSize)
-        let screen = Self.chosenScreen(preferredMonitorID: preferredMonitor) ?? NSScreen.main ?? NSScreen.screens.first!
+        // applyLayout() is wired to didChangeScreenParametersNotification, which
+        // fires exactly when displays are reconfigured (lid close, dock/undock)
+        // — the moment NSScreen.screens can be momentarily empty. Force-unwrapping
+        // .first here crashed on those events; bail gracefully instead.
+        guard let screen = Self.chosenScreen(preferredMonitorID: preferredMonitor) ?? NSScreen.main ?? NSScreen.screens.first else { return }
         let screenFrame = screen.frame
         let visible = screen.visibleFrame
 
@@ -114,10 +118,10 @@ final class SettingsWindowManager: NSObject, NSWindowDelegate {
     private static func centerOnTickerScreen(_ window: NSWindow) {
         let tickerScreen = TickerWindowController.shared.window?.screen
         let preferred = UserDefaults.standard.string(forKey: "preferredMonitor") ?? ""
-        let target = tickerScreen
+        guard let target = tickerScreen
             ?? TickerWindowController.chosenScreen(preferredMonitorID: preferred)
             ?? NSScreen.main
-            ?? NSScreen.screens.first!
+            ?? NSScreen.screens.first else { return }
         let visible = target.visibleFrame
         let wf = window.frame
         let x = visible.midX - wf.width / 2

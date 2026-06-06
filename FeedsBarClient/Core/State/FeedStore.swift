@@ -189,6 +189,10 @@ final class FeedStore {
     }
 
     private func persistSnapshot() {
+        // Build the snapshot from main-actor state, then hand the JSON encode +
+        // UserDefaults write to a background task. This runs on every 5-minute
+        // heartbeat with a payload of tens of KB; doing it inline blocks the
+        // main actor and contributes to the periodic UI hitches.
         let snap = CachedSnapshot(
             topics: self.topics,
             feeds: self.feeds,
@@ -196,10 +200,13 @@ final class FeedStore {
             items: self.items,
             cachedAt: Date()
         )
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        if let data = try? encoder.encode(snap) {
-            UserDefaults.standard.set(data, forKey: cacheKey)
+        let key = cacheKey
+        Task.detached(priority: .utility) {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            if let data = try? encoder.encode(snap) {
+                UserDefaults.standard.set(data, forKey: key)
+            }
         }
     }
 

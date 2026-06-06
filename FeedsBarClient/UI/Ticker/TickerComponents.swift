@@ -329,28 +329,57 @@ struct TickerRow: View {
 }
 
 // MARK: - ARTICLE THUMBNAIL
+
+/// Process-wide, bounded thumbnail cache. SwiftUI's AsyncImage does not cache
+/// across view instances, so in the recycling ticker every item that scrolls
+/// back into view re-fetches its image from the network. A shared NSCache keyed
+/// by URL serves the second-and-later appearances from memory.
+private enum ThumbnailCache {
+    static let shared: NSCache<NSURL, NSImage> = {
+        let cache = NSCache<NSURL, NSImage>()
+        cache.countLimit = 300
+        cache.totalCostLimit = 100 * 1024 * 1024 // ~100MB
+        return cache
+    }()
+}
+
 struct ArticleThumbnail: View {
     let url: URL
     let width: CGFloat
     let height: CGFloat
 
+    @State private var image: NSImage?
+
     var body: some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case .success(let image):
-                image
+        Group {
+            if let image {
+                Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: width, height: height)
                     .clipped()
                     .cornerRadius(6)
-            case .failure, .empty:
+            } else {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color.white.opacity(0.05))
                     .frame(width: width, height: height)
-            @unknown default:
-                EmptyView()
             }
+        }
+        .task(id: url) { await load() }
+    }
+
+    private func load() async {
+        if let cached = ThumbnailCache.shared.object(forKey: url as NSURL) {
+            image = cached
+            return
+        }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard let decoded = NSImage(data: data) else { return }
+            ThumbnailCache.shared.setObject(decoded, forKey: url as NSURL, cost: data.count)
+            image = decoded
+        } catch {
+            // Leave the placeholder in place on any failure.
         }
     }
 }
