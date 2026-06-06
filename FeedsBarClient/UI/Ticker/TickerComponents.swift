@@ -218,40 +218,46 @@ struct TickerAnimationLayer: View {
     }
 
     var body: some View {
-        ZStack(alignment: .leading) {
-            HStack(spacing: 60) {
-                ForEach(engine.visibleItems) { item in
-                    TickerRow(item: item, size: tickerSize)
-                        .background(GeometryReader { proxy in
-                            Color.clear.preference(key: RowWidthKey.self, value: [item.id: proxy.size.width])
-                        })
+        // TimelineView(.animation) ticks once per displayed frame and re-renders
+        // its content directly — no @Published mutation, no whole-ticker re-diff.
+        // We advance the engine's scroll state inside the closure off the frame's
+        // own timestamp, so motion stays smooth and decoupled from Combine.
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { context in
+            let _ = engine.advance(to: context.date)
+            ZStack(alignment: .leading) {
+                HStack(spacing: 60) {
+                    ForEach(engine.visibleItems) { item in
+                        TickerRow(item: item, size: tickerSize)
+                            .background(GeometryReader { proxy in
+                                Color.clear.preference(key: RowWidthKey.self, value: [item.id: proxy.size.width])
+                            })
+                    }
                 }
-            }
-            .offset(x: engine.offset)
-            .onPreferenceChange(RowWidthKey.self) { engine.updateWidthsOnce($0) }
-            .onHover { hovering in
-                scrollManager.isHovering = hovering
-                withAnimation(.easeOut(duration: 0.2)) { engine.setPaused(hovering || isDragging) }
-            }
-            .gesture(
-                DragGesture().onChanged { value in
-                    isDragging = true; engine.setPaused(true)
-                    let delta = value.translation.width - lastDragTranslation
-                    engine.manualScroll(delta: delta)
-                    lastDragTranslation = value.translation.width
-                }.onEnded { _ in
-                    isDragging = false; lastDragTranslation = 0
-                    engine.setPaused(scrollManager.isHovering)
+                .offset(x: engine.offset)
+                .onPreferenceChange(RowWidthKey.self) { engine.updateWidthsOnce($0) }
+                .onHover { hovering in
+                    scrollManager.isHovering = hovering
+                    engine.setPaused(hovering || isDragging)
                 }
-            )
+                .gesture(
+                    DragGesture().onChanged { value in
+                        isDragging = true; engine.setPaused(true)
+                        let delta = value.translation.width - lastDragTranslation
+                        engine.manualScroll(delta: delta)
+                        lastDragTranslation = value.translation.width
+                    }.onEnded { _ in
+                        isDragging = false; lastDragTranslation = 0
+                        engine.setPaused(scrollManager.isHovering)
+                    }
+                )
+            }
         }
         .onAppear {
             engine.configure(items: ordered(store.items), bufferSize: 15, spacing: 60, speed: scrollSpeed)
-            engine.start()
             scrollManager.onScroll = { engine.manualScroll(delta: $0) }
             scrollManager.startMonitor()
         }
-        .onDisappear { engine.stop(); scrollManager.stopMonitor() }
+        .onDisappear { scrollManager.stopMonitor() }
         .onChange(of: store.items) { oldItems, newItems in
             // If the ID set hasn't changed, don't reset scroll position.
             let oldIds = Set(oldItems.map(\.id))

@@ -39,19 +39,25 @@ final class ScrollManager: ObservableObject {
 /// MARK: - TICKER ENGINE (Full Fidelity)
 @MainActor
 final class TickerEngine: ObservableObject {
-    @Published private(set) var offset: CGFloat = 0
-    @Published private(set) var visibleItems: [FeedItem] = []
+    // Deliberately NOT @Published. These mutate 60×/sec; publishing them fired
+    // objectWillChange every frame and forced SwiftUI to re-diff the whole
+    // ticker — the suspected cause of the beachballs. The view now reads them
+    // inside a TimelineView(.animation) closure, which drives the redraw
+    // directly without routing through Combine.
+    private(set) var offset: CGFloat = 0
+    private(set) var visibleItems: [FeedItem] = []
 
     private var spacing: CGFloat = 60
     private var bufferSize: Int = 15
     private var allItems: [FeedItem] = []
-    
+
     // Tracks the index in `allItems` of the very first item currently visible.
     private var firstSourceIndex: Int = 0
-    
+
     private var itemWidths: [String: CGFloat] = [:]
-    private var timer: AnyCancellable?
-    private var lastTime: CFTimeInterval = CACurrentMediaTime()
+    // Timestamp (timeIntervalSinceReferenceDate) of the previous frame. 0 means
+    // "not started yet" so the first advance() seeds the clock without a jump.
+    private var lastTime: TimeInterval = 0
     private(set) var paused: Bool = false
     private var speed: Double = 1.0
 
@@ -65,7 +71,7 @@ final class TickerEngine: ObservableObject {
         self.visibleItems.removeAll()
         self.offset = 0
         self.firstSourceIndex = 0
-        self.lastTime = CACurrentMediaTime()
+        self.lastTime = 0 // reseed on next advance()
 
         guard !self.allItems.isEmpty else { return }
 
@@ -79,19 +85,6 @@ final class TickerEngine: ObservableObject {
     func setSpeed(_ speed: Double) { self.speed = speed }
     func setPaused(_ paused: Bool) { self.paused = paused }
 
-    func start() {
-        stop()
-        lastTime = CACurrentMediaTime()
-        timer = Timer.publish(every: 1.0 / 60.0, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in self?.step() }
-    }
-
-    func stop() {
-        timer?.cancel()
-        timer = nil
-    }
-
     func updateWidthsOnce(_ widths: [String: CGFloat]) {
         for (id, w) in widths where itemWidths[id] == nil && w > 0 {
             itemWidths[id] = w
@@ -103,15 +96,21 @@ final class TickerEngine: ObservableObject {
         recycleIfNeeded()
     }
 
-    private func step() {
-        let now = CACurrentMediaTime()
-        let dt = now - lastTime
+    /// Advance the scroll position to the given frame timestamp. Driven by the
+    /// TimelineView(.animation) clock — called once per displayed frame, in
+    /// place of the old 60Hz Combine timer.
+    func advance(to date: Date) {
+        let now = date.timeIntervalSinceReferenceDate
+        let last = lastTime
         lastTime = now
 
-        guard dt > 0, dt < 0.1, !paused, !visibleItems.isEmpty else { return }
+        // last == 0: first frame after start/reconfigure — seed the clock only.
+        // dt >= 0.1: a stall or a resume-from-pause gap — skip it rather than
+        // lurching the content forward by the whole elapsed interval.
+        guard last > 0, now > last, now - last < 0.1, !paused, !visibleItems.isEmpty else { return }
 
         // Move content Left (offset decreases)
-        let moveDist = CGFloat(dt * 60.0 * speed)
+        let moveDist = CGFloat((now - last) * 60.0 * speed)
         offset -= moveDist
         recycleIfNeeded()
     }
