@@ -29,6 +29,9 @@ actor FeedAPI {
             config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
             config.urlCache = nil
             config.timeoutIntervalForRequest = 15
+            // Without this the resource timeout defaults to 7 days, so a stalled
+            // connection leaks a socket for a week. Cap the whole transfer at 60s.
+            config.timeoutIntervalForResource = 60
             self.session = URLSession(configuration: config)
             
             self.decoder = JSONDecoder()
@@ -105,8 +108,11 @@ actor FeedAPI {
             lastStatus = http.statusCode
             // Retry on 5xx; give up immediately on 4xx
             if http.statusCode >= 500 && attempt < maxAttempts {
-                let delay = UInt64(300_000_000) * UInt64(attempt) // 0.3s, 0.6s
-                try? await Task.sleep(nanoseconds: delay)
+                // 0.3s * attempt, plus up to 0.2s of random jitter. refreshAll()
+                // fires several endpoints at once; without jitter their retries
+                // synchronize into bursts against the Netlify edge.
+                let seconds = 0.3 * Double(attempt) + Double.random(in: 0...0.2)
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
                 continue
             }
             break
