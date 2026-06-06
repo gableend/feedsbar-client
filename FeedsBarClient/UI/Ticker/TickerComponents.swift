@@ -205,10 +205,11 @@ struct TickerAnimationLayer: View {
     @Binding var scrollSpeed: Double
     @AppStorage("feedMix") private var feedMix: String = "shuffle"  // "shuffle" | "latest"
 
-    @StateObject private var engine = TickerEngine()
-    @StateObject private var scrollManager = ScrollManager()
-    @State private var isDragging = false
-    @State private var lastDragTranslation: CGFloat = 0
+    /// The ordered strip handed to the marquee. Held in @State (not recomputed
+    /// in `body`) so a `shuffle` ordering is stable across redraws and only
+    /// re-rolls when the items or the feedMix actually change — otherwise every
+    /// SwiftUI update would re-shuffle and the strip would churn.
+    @State private var displayItems: [FeedItem] = []
 
     /// Items arranged per the user's feedMix preference.
     /// - shuffle: Fisher-Yates random interleave across feeds
@@ -218,60 +219,21 @@ struct TickerAnimationLayer: View {
     }
 
     var body: some View {
-        // TimelineView(.animation) ticks once per displayed frame and re-renders
-        // its content directly — no @Published mutation, no whole-ticker re-diff.
-        // We advance the engine's scroll state inside the closure off the frame's
-        // own timestamp, so motion stays smooth and decoupled from Combine.
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { context in
-            let _ = engine.advance(to: context.date)
-            ZStack(alignment: .leading) {
-                HStack(spacing: 60) {
-                    ForEach(engine.visibleItems) { item in
-                        TickerRow(item: item, size: tickerSize)
-                            .background(GeometryReader { proxy in
-                                Color.clear.preference(key: RowWidthKey.self, value: [item.id: proxy.size.width])
-                            })
-                    }
-                }
-                .offset(x: engine.offset)
-                .onPreferenceChange(RowWidthKey.self) { engine.updateWidthsOnce($0) }
-                .onHover { hovering in
-                    scrollManager.isHovering = hovering
-                    engine.setPaused(hovering || isDragging)
-                }
-                .gesture(
-                    DragGesture().onChanged { value in
-                        isDragging = true; engine.setPaused(true)
-                        let delta = value.translation.width - lastDragTranslation
-                        engine.manualScroll(delta: delta)
-                        lastDragTranslation = value.translation.width
-                    }.onEnded { _ in
-                        isDragging = false; lastDragTranslation = 0
-                        engine.setPaused(scrollManager.isHovering)
-                    }
-                )
+        // The scroll is driven entirely inside MarqueeTickerView by a CALayer
+        // animation on the render server — no per-frame SwiftUI work here.
+        MarqueeTickerView(items: displayItems, size: tickerSize, speed: scrollSpeed)
+            .onAppear {
+                if displayItems.isEmpty { displayItems = ordered(store.items) }
             }
-        }
-        .onAppear {
-            engine.configure(items: ordered(store.items), bufferSize: 15, spacing: 60, speed: scrollSpeed)
-            scrollManager.onScroll = { engine.manualScroll(delta: $0) }
-            scrollManager.startMonitor()
-        }
-        .onDisappear { scrollManager.stopMonitor() }
-        .onChange(of: store.items) { oldItems, newItems in
-            // If the ID set hasn't changed, don't reset scroll position.
-            let oldIds = Set(oldItems.map(\.id))
-            let newIds = Set(newItems.map(\.id))
-            if oldIds == newIds { return }
-            engine.configure(items: ordered(newItems), bufferSize: 15, spacing: 60, speed: scrollSpeed)
-        }
-        .onChange(of: feedMix) { _, _ in
-            // User toggled order mode — reshuffle immediately.
-            engine.configure(items: ordered(store.items), bufferSize: 15, spacing: 60, speed: scrollSpeed)
-        }
-        .onChange(of: scrollSpeed) { _, newSpeed in
-            engine.setSpeed(newSpeed)
-        }
+            .onChange(of: store.items) { oldItems, newItems in
+                // If the ID set hasn't changed, keep the current strip + scroll.
+                if Set(oldItems.map(\.id)) == Set(newItems.map(\.id)) { return }
+                displayItems = ordered(newItems)
+            }
+            .onChange(of: feedMix) { _, _ in
+                // User toggled order mode — reshuffle immediately.
+                displayItems = ordered(store.items)
+            }
     }
 }
 
