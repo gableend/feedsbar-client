@@ -13,6 +13,7 @@
 		786213DC2F4487AD0035D769 /* FeedAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786213DB2F4487AD0035D769 /* FeedAPI.swift */; };
 		786213DE2F44881B0035D769 /* FeedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786213DD2F44881B0035D769 /* FeedStore.swift */; };
 		786213E02F448B0B0035D769 /* TickerComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786213DF2F448B0B0035D769 /* TickerComponents.swift */; };
+		786213E22F448B0B0035D769 /* MarqueeTickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786213E12F448B0B0035D769 /* MarqueeTickerView.swift */; };
 		786213E22F448B2E0035D769 /* TickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786213E12F448B2E0035D769 /* TickerView.swift */; };
 		786213E42F448B8D0035D769 /* LoadingSplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786213E32F448B8D0035D769 /* LoadingSplashView.swift */; };
 		786213E62F448C110035D769 /* FaviconStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 786213E52F448C110035D769 /* FaviconStore.swift */; };
@@ -48,6 +49,7 @@
 		786213DB2F4487AD0035D769 /* FeedAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedAPI.swift; sourceTree = "<group>"; };
 		786213DD2F44881B0035D769 /* FeedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedStore.swift; sourceTree = "<group>"; };
 		786213DF2F448B0B0035D769 /* TickerComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TickerComponents.swift; sourceTree = "<group>"; };
+		786213E12F448B0B0035D769 /* MarqueeTickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarqueeTickerView.swift; sourceTree = "<group>"; };
 		786213E12F448B2E0035D769 /* TickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TickerView.swift; sourceTree = "<group>"; };
 		786213E32F448B8D0035D769 /* LoadingSplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadingSplashView.swift; sourceTree = "<group>"; };
 		786213E52F448C110035D769 /* FaviconStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaviconStore.swift; sourceTree = "<group>"; };
@@ -197,6 +199,7 @@
 			isa = PBXGroup;
 			children = (
 				786213DF2F448B0B0035D769 /* TickerComponents.swift */,
+				786213E12F448B0B0035D769 /* MarqueeTickerView.swift */,
 				786213E12F448B2E0035D769 /* TickerView.swift */,
 				786213E72F448D520035D769 /* SignalClusterView.swift */,
 			);
@@ -367,6 +370,7 @@
 				786213EA2F449B4C0035D769 /* DesignSystem.swift in Sources */,
 				786213E42F448B8D0035D769 /* LoadingSplashView.swift in Sources */,
 				786213E02F448B0B0035D769 /* TickerComponents.swift in Sources */,
+				786213E22F448B0B0035D769 /* MarqueeTickerView.swift in Sources */,
 				786213DE2F44881B0035D769 /* FeedStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
