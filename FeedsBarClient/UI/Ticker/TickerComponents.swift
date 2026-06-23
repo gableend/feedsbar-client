@@ -103,28 +103,46 @@ struct SignalRotationOrb: View {
             let color = resolveOrbColor(for: activeOrb, topics: store.topics)
             let words = Array((activeOrb.keywords ?? []).prefix(3))
             let intensity = activeOrb.glowIntensity
+            let haloSize = orbSize * CGFloat(1.5 + 0.9 * intensity)
 
             HStack(spacing: 10) {
                 // Velocity-driven glow dot: brighter, larger, and faster-pulsing
                 // when the topic is moving; calm and still when quiet. Also the
                 // focus toggle — tap to pin the ticker to this topic.
                 ZStack {
+                    // Soft glow as a static RadialGradient instead of a Gaussian
+                    // .blur(). A blur is an offscreen render pass the compositor must
+                    // re-rasterize every frame as the marquee slides it across the bar
+                    // — confirmed as the WindowServer driver (pausing the marquee on
+                    // hover drops it). A gradient fill rasterizes once and slides as a
+                    // cached texture, so the pulse animates scale + opacity only (cheap
+                    // GPU transforms), never the blur radius.
                     Circle()
-                        .fill(color.opacity(0.25 + 0.35 * intensity))
-                        .frame(width: orbSize * CGFloat(1.5 + 0.9 * intensity),
-                               height: orbSize * CGFloat(1.5 + 0.9 * intensity))
+                        .fill(
+                            RadialGradient(
+                                gradient: Gradient(colors: [
+                                    color.opacity(0.55 + 0.35 * intensity),
+                                    color.opacity(0.0)
+                                ]),
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: haloSize / 2
+                            )
+                        )
+                        .frame(width: haloSize, height: haloSize)
                         .scaleEffect(pulse ? CGFloat(1.0 + 0.22 * intensity) : 1.0)
-                        .blur(radius: CGFloat(5 + 6 * intensity))
+                        .opacity(pulse ? 1.0 : 0.7)
                         .animation(
                             intensity > 0.15
                                 ? .easeInOut(duration: max(0.8, 2.2 - 1.4 * intensity)).repeatForever(autoreverses: true)
                                 : .default,
                             value: pulse
                         )
+                    // Solid core dot. Drop shadow removed — it's another offscreen
+                    // pass; the radial halo already supplies the surrounding glow.
                     Circle()
                         .fill(color)
                         .frame(width: orbSize, height: orbSize)
-                        .shadow(color: color.opacity(0.6), radius: 4)
                     if isFocused {
                         Circle()
                             .stroke(color, lineWidth: 1.5)
