@@ -849,6 +849,9 @@ struct SourcesOverviewTab: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 header
+                if store.isOverFeedCap {
+                    capBanner
+                }
                 if totalFeedCount > 0 {
                     masterToggleRow
                 }
@@ -902,6 +905,33 @@ struct SourcesOverviewTab: View {
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color.white.opacity(0.08))
+        )
+    }
+
+    /// Shown when the user has enabled more feeds than the ticker actually
+    /// pulls from (FeedStore.activeFeedCap). Without it, the silent cap reads
+    /// as "I enabled it but it doesn't show up."
+    private var capBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 13))
+                .foregroundColor(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Showing \(FeedStore.activeFeedCap) of \(store.enabledFeedCount) enabled feeds")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(FeedsTheme.primaryText)
+                Text("Performance limit — the ticker pulls from the first \(FeedStore.activeFeedCap) active feeds. Disable some to choose which.")
+                    .font(.system(size: 11))
+                    .foregroundColor(FeedsTheme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.orange.opacity(0.12))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.orange.opacity(0.35), lineWidth: 1))
         )
     }
 

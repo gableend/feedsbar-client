@@ -106,6 +106,24 @@ final class FeedStore {
     }
 
     // MARK: - Feed Enable/Disable
+
+    /// Hard cap on how many feeds actually drive the ticker. The items-batch
+    /// endpoint accepts at most this many feed_ids per request; beyond it we
+    /// silently take the first N. Surfaced in the Sources tab so enabling more
+    /// than this doesn't read as a "my feed isn't showing up" bug.
+    static let activeFeedCap = 20
+
+    /// Feeds the user has enabled (active and not disabled). May exceed
+    /// `activeFeedCap`, in which case only the first `activeFeedCap` reach the
+    /// ticker — see `isOverFeedCap`.
+    var enabledFeedCount: Int {
+        let disabled = disabledIDs
+        return feeds.filter { ($0.isActive ?? true) && !disabled.contains($0.id) }.count
+    }
+
+    /// True when more feeds are enabled than the ticker will pull from.
+    var isOverFeedCap: Bool { enabledFeedCount > FeedStore.activeFeedCap }
+
     // Stored property so @Observable tracks reads and any view computing
     // `isFeedEnabled(id)` re-renders the instant this Set changes.
     // Mirrored to UserDefaults on every write for persistence.
@@ -337,7 +355,7 @@ final class FeedStore {
         let disabled = self.disabledIDs
         let activeFeedIDs = self.feeds
             .filter { ($0.isActive ?? true) && !disabled.contains($0.id) }
-            .prefix(20)
+            .prefix(FeedStore.activeFeedCap)
             .map { $0.id }
 
         do {
@@ -393,7 +411,7 @@ final class FeedStore {
         let disabled = self.disabledIDs
         let activeFeedIDs = self.feeds
             .filter { ($0.isActive ?? true) && !disabled.contains($0.id) }
-            .prefix(20)
+            .prefix(FeedStore.activeFeedCap)
             .map { $0.id }
 
         // Dynamic curated sets (Pulse) want a tight recency window so the

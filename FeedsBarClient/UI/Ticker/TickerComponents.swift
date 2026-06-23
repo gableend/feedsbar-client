@@ -377,18 +377,39 @@ struct TickerRow: View {
         .opacity(isRead ? 0.45 : 1.0)
         .onHover { isHovered = $0 }
         .onTapGesture {
-            // Only open http/https links. RSS titles are user-curated but the
-            // urls are not — refuse file://, javascript:, etc. before handing
-            // off to NSWorkspace.
-            if let urlStr = item.url,
-               let url = URL(string: urlStr),
-               let scheme = url.scheme?.lowercased(),
-               scheme == "http" || scheme == "https" {
-                // Mark read first so the row dims even if the open is slow.
-                ReadStore.shared.markRead(item.id)
-                NSWorkspace.shared.open(url)
+            if let url = openableURL { open(url) }
+        }
+        // Right-click to share without leaving the ticker. Hovering pauses the
+        // marquee, so by the time the menu is invoked hit-testing is aligned
+        // with what's on screen (same reason tap-to-open is hover-gated).
+        .contextMenu {
+            if let url = openableURL {
+                Button { open(url) } label: { Label("Open", systemImage: "safari") }
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(url.absoluteString, forType: .string)
+                } label: { Label("Copy Link", systemImage: "link") }
+                ShareLink(item: url) { Label("Share…", systemImage: "square.and.arrow.up") }
             }
         }
+    }
+
+    /// The item's link, but only if it's a real http(s) URL. RSS titles are
+    /// user-curated; the urls are not — refuse file://, javascript:, etc.
+    /// before handing anything to the system. Nil → row is inert (no open,
+    /// no context menu).
+    private var openableURL: URL? {
+        guard let urlStr = item.url,
+              let url = URL(string: urlStr),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else { return nil }
+        return url
+    }
+
+    private func open(_ url: URL) {
+        // Mark read first so the row dims even if the open is slow.
+        ReadStore.shared.markRead(item.id)
+        NSWorkspace.shared.open(url)
     }
 
     private func mainFontSize(_ size: Int) -> CGFloat { size == 1 ? 15 : (size == 4 ? 30 : 22) }
