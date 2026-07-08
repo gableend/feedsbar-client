@@ -486,10 +486,23 @@ struct OrbPill: View {
         let color = resolveOrbColor(for: orb, topics: topics)
         HStack(spacing: 6) {
             ZStack {
-                Circle().fill(color.opacity(0.35))
-                    .frame(width: 14, height: 14).blur(radius: 3)
+                // Static RadialGradient halo, matching the ticker orbs
+                // (SignalRotationOrb) — no Gaussian .blur()/.shadow() offscreen
+                // passes, just a cached gradient fill.
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            gradient: Gradient(colors: [
+                                color.opacity(0.5),
+                                color.opacity(0.0)
+                            ]),
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 7
+                        )
+                    )
+                    .frame(width: 14, height: 14)
                 Circle().fill(color).frame(width: 8, height: 8)
-                    .shadow(color: color.opacity(0.6), radius: 2)
             }
             Text(orb.topicLabel.uppercased())
                 .font(.system(size: 10, weight: .black))
