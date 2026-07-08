@@ -38,10 +38,23 @@ struct SignalClusterView: View {
                 
                 HStack(spacing: 10) {
                     ZStack {
+                        // Static RadialGradient halo instead of a .blur(). A blur is an
+                        // offscreen render pass the compositor re-rasterizes every frame
+                        // as the marquee slides it across the bar; a gradient fill
+                        // rasterizes once and slides as a cached texture.
                         Circle()
-                            .fill(sentimentColor(orb).opacity(0.3))
+                            .fill(
+                                RadialGradient(
+                                    gradient: Gradient(colors: [
+                                        sentimentColor(orb).opacity(0.45),
+                                        sentimentColor(orb).opacity(0.0)
+                                    ]),
+                                    center: .center,
+                                    startRadius: 0,
+                                    endRadius: orbSize * 0.75
+                                )
+                            )
                             .frame(width: orbSize * 1.5, height: orbSize * 1.5)
-                            .blur(radius: 4)
                         Circle()
                             .fill(sentimentColor(orb))
                             .frame(width: orbSize, height: orbSize)
